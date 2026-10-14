@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Horde3D</title>
+<link rel="icon" href="data:,"><link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three/webgpu":"./vendor/three.webgpu.js","three/tsl":"./vendor/three.tsl.js"}}</script></head>
+<body><canvas id="world"></canvas>
+<div id="top"><span id="mode">ON FOOT</span><span id="objective">FIND SURVIVORS BEYOND THE AIRFIELD</span><span id="kills">0 / 500</span></div>
+<div id="upgrades"></div>
+<div id="marker-car" class="marker" hidden></div><div id="marker-jet" class="marker" hidden></div>
+<div id="waypoint" class="marker" hidden></div>
+<div id="interact"></div><div id="boost" hidden><span>SHIFT BOOST</span><div><i></i></div></div>
+<div id="crosshair"><i></i><b></b></div><div id="hit"></div><div id="damage"></div>
+<div id="bottom"><div id="health"><span>HULL</span><b>100</b><i></i></div><div id="message"></div><div id="weapon">CARBINE<br><b>32</b><small> / ∞</small></div></div>
+<div id="hint">WASD · Mouse aim · E enter / exit · Shift sprint / boost · C slide · Space jump · H controls</div>
+<div id="gate"><button id="play" disabled>Building battlefield…</button><div>EXPEDITIONS 0.8.1 · WASD + mouse · Click to capture cursor</div><button id="save-now" disabled>Save expedition</button><div id="save-status" role="status">Local expedition checkpoints</div></div>
+<div id="help" hidden>E &nbsp; Enter nearby vehicle / exit / eject<br>F &nbsp; Hold to repair a survivor radio<br>M &nbsp; Mute / unmute sound<br>WASD &nbsp; Move / drive / fly<br>Mouse &nbsp; Aim on foot / steer jet<br>Left click &nbsp; Fire<br>Right click &nbsp; Shove / vehicle missiles<br>Shift &nbsp; Sprint / boost / parachute dive<br>C or Ctrl &nbsp; Crouch; slide while sprinting<br>Space &nbsp; Jump / handbrake / bomb<br>In air: Space &nbsp; Cut / open parachute<br>Dive into the crowd to skim and scoop<br>Z / X / V &nbsp; Buy rifle / car / bomb upgrade<br>R &nbsp; Reload / deploy after defeat<br>After defeat: 1 / 2 / 3 &nbsp; Choose drop / car / jet<br>Esc &nbsp; Pause<br>H &nbsp; Close controls</div>
+<script type="module" src="src/main.js"></script></body></html>
