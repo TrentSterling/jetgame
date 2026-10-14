@@ -1,4 +1,5 @@
 import {terrainWGSL} from './terrain.js';
+import {encounterRings,encounterRelocationDistance} from './regions.js';
 import {
   Fn, If, Return, atomicAdd, atomicLoad, atomicStore, instanceIndex,
   float, uint, vec2, vec3, vec4, abs, atan, clamp, cos, dot, length,
@@ -20,9 +21,11 @@ export function createKernels(h) {
 
   const cellIndex=p=>cell(p.sub(fieldOrigin));
   const inside=p=>abs(p.x.sub(fieldOrigin.x)).lessThan(188).and(abs(p.y.sub(fieldOrigin.y)).lessThan(188));
-  const relocate=wgslFn(`fn relocate(id:f32,goal:vec2f)->vec2f{let c=floor(goal/900.0+vec2f(.5))+vec2f((id%3.0)-1.0,(floor(id/3.0)%3.0)-1.0);let site=c*900.0+vec2f(sin(c.x*7.0+c.y*13.0),sin(c.x*17.0-c.y*5.0))*110.0;let a=id*2.39996;let r=55.0+(id%71.0);return site+vec2f(cos(a),sin(a))*r;}`);
+  const relocate=wgslFn(`fn relocate(id:f32,goal:vec2f)->vec2f{let c=floor(goal/900.0+vec2f(.5))+vec2f((id%3.0)-1.0,(floor(id/3.0)%3.0)-1.0);var site=c*900.0+vec2f(sin(c.x*7.0+c.y*13.0),sin(c.x*17.0-c.y*5.0))*110.0;if(all(c==vec2f(0.0))){site=vec2f(0.0,70.0);}let a=id*2.39996;let guard=(floor(id/9.0)%${encounterRings.stride}.0)<.5;let r=select(${encounterRings.outerMin}.0+sqrt((id%229.0)/229.0)*${encounterRings.outerSpan}.0,${encounterRings.guardMin}.0+sqrt((id%79.0)/79.0)*${encounterRings.guardSpan}.0,guard);return site+vec2f(cos(a),sin(a))*r;}`);
   const clear = Fn(() => {
     atomicStore(density.element(instanceIndex), uint(0));
+    // Tail scratch slots preserve the eight-storage-buffer device limit.
+    If(instanceIndex.lessThan(2),()=>{atomicStore(density.element(instanceIndex.add(16384)),uint(0));});
   })().compute(128 * 128);
 
   const snapshot = Fn(() => {
@@ -58,7 +61,7 @@ export function createKernels(h) {
       Return();
     });
 
-    If(streaming.greaterThan(.5).and(length(a.xz.sub(goal.xz)).greaterThan(1700)),()=>{
+    If(streaming.greaterThan(.5).and(length(a.xz.sub(goal.xz)).greaterThan(encounterRelocationDistance)),()=>{
       const q=relocate(float(id),goal.xz);a.assign(vec4(q.x,ground(q),q.y,0));v.assign(vec4(0));
       pos.element(id).assign(a);vel.element(id).assign(v);Return();
     });
@@ -156,7 +159,13 @@ export function createKernels(h) {
     If(v.w.lessThanEqual(0).and(distance.lessThan(1.55)).and(abs(goal.y.sub(center.y)).lessThan(2.6)), () => {
       const contact=uint(dt.mul(1000).mul(float(1).add(heavy.mul(2))));
       atomicAdd(counters.element(5),contact);
-      If(goal.w.lessThan(.5),()=>{atomicAdd(counters.element(9),contact);}).ElseIf(goal.w.lessThan(1.5),()=>{atomicAdd(counters.element(10),contact);});
+      // Three ordinary attackers (or one heavy) can make contact together.
+      // Bound each simulation frame, independent of CPU readback frequency.
+      If(goal.w.lessThan(1.5),()=>{
+        const seat=uint(step(.5,goal.w)),used=atomicAdd(density.element(seat.add(16384)),contact).toVar();
+        const allowed=min(contact,uint(max(0,dt.mul(3000).sub(float(used)))));
+        atomicAdd(counters.element(seat.add(9)),allowed);
+      });
       const away = normalize(direct.add(.001)).mul(-.25);
       v.x.assign(away.x);
       v.z.assign(away.y);

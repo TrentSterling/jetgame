@@ -1,3 +1,5 @@
+// Mounted weapons follow the hull over grades; reticle and projectiles share it.
+export function carWeaponDirection(body,bias=-.018){const pitch=Math.max(-.65,Math.min(.65,(body.pitch||0)+bias)),c=Math.cos(pitch);return {x:-Math.sin(body.yaw)*c,y:Math.sin(pitch),z:-Math.cos(body.yaw)*c};}
 export class Combat{
  constructor(){this.reset();}
  reset(){this.stamina=1;this.shoveDelay=0;this.recoverDelay=0;this.shoveAnimation=0;this.shoves=0;this.missilesFired=0;this.missileDelay={car:0,jet:0};this.ammo={car:6,jet:10};this.reload={car:0,jet:0};}

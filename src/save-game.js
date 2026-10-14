@@ -1,5 +1,6 @@
 // Versioned local checkpoints. Simulation buffers are copied on the same GPU
 // queue as the frame, then committed together in one IndexedDB transaction.
+import {regionAt,expeditionOffer} from './regions.js';
 export const SAVE_SCHEMA=1,WORLD_VERSION='expeditions-1';
 const bodyData=body=>Object.fromEntries(Object.entries(body).filter(([k,v])=>k==='pos'||['number','boolean','string'].includes(typeof v)).map(([k,v])=>[k,k==='pos'?v.toArray():v]));
 const setBody=(body,data)=>{for(const [k,v] of Object.entries(data))if(k==='pos')body.pos.fromArray(v);else body[k]=v;};
@@ -14,6 +15,7 @@ export function validateCheckpoint(s,count){
  if(!s.runtime||!modes.includes(s.runtime.mode)||!finite(s.runtime.time)||s.runtime.time<0||!position(s.runtime.deathPoint))bad('run state');
  if(!modes.includes(s.runtime.respawnMode)||Object.entries(s.runtime).some(([k,v])=>!['mode','respawnMode','deathPoint'].includes(k)&&!['boolean'].includes(typeof v)&&!finite(v)))bad('run values');
  if(!runtimeNumbers.every(k=>finite(s.runtime[k]))||!['dead','won'].every(k=>typeof s.runtime[k]==='boolean'))bad('missing run values');
+ if(s.runtime.hurtUntil!==undefined&&!finite(s.runtime.hurtUntil))bad('injury interruption');
  if(!s.upgrades||!modes.every(k=>Number.isInteger(s.upgrades.levels?.[k])&&s.upgrades.levels[k]>=0&&s.upgrades.levels[k]<=3)||!['earned','spent','rewards'].every(k=>finite(s.upgrades[k])&&s.upgrades[k]>=0))bad('upgrades');
  if(!s.fleet||!Array.isArray(s.fleet.bodies)||s.fleet.bodies.length>100000||!s.fleet.bodies.every(b=>bodyValid(b)&&typeof b.fleetId==='string'&&['buggy','scout','carrier','jet'].includes(b.kind)))bad('vehicles');
  const ids=new Set(s.fleet.bodies.map(b=>b.fleetId));
@@ -22,6 +24,17 @@ export function validateCheckpoint(s,count){
  const e=s.expeditions;
  if(!e||!['done','repaired','visited'].every(k=>Array.isArray(e[k])&&e[k].every(v=>typeof v==='string'))||!Array.isArray(e.refuges)||!e.refuges.length||!e.refuges.every(r=>typeof r.id==='string'&&finite(r.x)&&finite(r.z))||!['rescued','deliveries','progress'].every(k=>finite(e[k])&&e[k]>=0))bad('expeditions');
  if(e.party&&(!ids.has(e.party.vehicle)||!finite(e.party.count)||!finite(e.party.reward)||!finite(e.party.x)||!finite(e.party.z)||typeof e.party.id!=='string'))bad('passengers');
+ // Optional additive data keeps all v0.8 checkpoints readable. Mission bodies
+ // are validated before any runtime/GPU state is changed by restore().
+ if(e.missions!==undefined){
+  const m=e.missions;if(!m||m.version!==1||!Number.isInteger(m.relays)||m.relays<0||!Array.isArray(m.sites)||m.sites.length>100000)bad('mission state');
+  const seen=new Set();for(const entry of m.sites){
+   if(!Array.isArray(entry)||entry.length!==2||typeof entry[0]!=='string'||!/^(-?\d+),(-?\d+)$/.test(entry[0])||seen.has(entry[0]))bad('mission address');
+   seen.add(entry[0]);const coords=entry[0].split(',').map(Number);if(!coords.every(Number.isSafeInteger))bad('mission coordinates');
+   const site=regionAt(...coords),state=entry[1],count=site.kind==='home'?0:expeditionOffer(site).people;
+   if(!state||typeof state.kit!=='boolean'||!finite(state.signal)||state.signal<0||state.signal>12||!Array.isArray(state.people)||state.people.length!==count||!Array.from(state.people).every(p=>p&&finite(p.x)&&finite(p.z)&&Math.hypot(p.x-site.x,p.z-site.z)<150))bad('mission survivors');
+  }
+ }
  if(!s.combat||!['car','jet'].every(k=>finite(s.combat.ammo?.[k])&&finite(s.combat.reload?.[k])&&finite(s.combat.missileDelay?.[k]))||!['stamina','shoveDelay','recoverDelay','shoveAnimation','shoves','missilesFired'].every(k=>finite(s.combat[k])))bad('combat');
  if(!Array.isArray(s.broken)||s.broken.some(v=>!Number.isInteger(v)||v<0||v>=36))bad('scenery');
  for(const [key,length,Type] of [['pos',count*4,Float32Array],['state',count*4,Float32Array],['vel',count*4,Float32Array],['blood',count*12,Float32Array],['counters',13,Uint32Array]]){
@@ -52,7 +65,7 @@ export class GameSave{
  async capture(){
   const {horde,fleet,expeditions:e,player,upgrades,combat,course,readRuntime}=this.game;
   const bodies=new Map([...fleet.saved].map(([id,b])=>[id,bodyData(b)]));for(const entry of fleet.entries)bodies.set(entry.id,bodyData(entry.body));
-  const record={schema:SAVE_SCHEMA,world:WORLD_VERSION,savedAt:Date.now(),count:horde.count,player:bodyData(player),runtime:readRuntime(),upgrades:structuredClone(upgrades),combat:structuredClone(combat),fleet:{active:{car:fleet.active.car.id,jet:fleet.active.jet.id},bodies:[...bodies.values()]},expeditions:{done:[...e.done],repaired:[...e.repaired],visited:[...e.visited],refuges:structuredClone(e.refuges),party:structuredClone(e.party),rescued:e.rescued,deliveries:e.deliveries,progress:e.progress,active:e.active},broken:course.props.flatMap((p,i)=>p.broken?[i]:[]),streaming:horde.streaming.value};
+  const record={schema:SAVE_SCHEMA,world:WORLD_VERSION,savedAt:Date.now(),count:horde.count,player:bodyData(player),runtime:readRuntime(),upgrades:structuredClone(upgrades),combat:structuredClone(combat),fleet:{active:{car:fleet.active.car.id,jet:fleet.active.jet.id},bodies:[...bodies.values()]},expeditions:{done:[...e.done],repaired:[...e.repaired],visited:[...e.visited],refuges:structuredClone(e.refuges),party:structuredClone(e.party),rescued:e.rescued,deliveries:e.deliveries,progress:e.progress,active:e.active,missions:e.missionSnapshot()},broken:course.props.flatMap((p,i)=>p.broken?[i]:[]),streaming:horde.streaming.value};
   const keys=['pos','state','vel','blood','counters'];
   // These calls submit all five copies synchronously before yielding. A later
   // simulation frame cannot land between the copied buffers.
@@ -65,6 +78,7 @@ export class GameSave{
   for(const k of ['done','repaired','visited'])e[k]=new Set(s.expeditions[k]);
   for(const k of ['refuges','party','rescued','deliveries','progress','active'])e[k]=structuredClone(s.expeditions[k]);
   for(const site of e.sites.values())site.ready=e.repaired.has(site.id);
+  e.restoreMissions(s.expeditions.missions);
   course.reset();for(const i of s.broken){const p=course.props[i];p.broken=true;p.mesh.visible=false;course.smashed++;p.mesh.traverse(o=>{const j=course.solids.indexOf(o);if(j>=0)course.solids.splice(j,1);});}
   horde.generation++;
   for(const k of ['pos','state','vel','blood','counters']){const a=horde[k].value;a.array.set(k==='counters'?new Uint32Array(s.gpu[k]):new Float32Array(s.gpu[k]));a.needsUpdate=true;
