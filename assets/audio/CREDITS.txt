@@ -1,0 +1,9 @@
+Recorded gunfire: The Free Firearm Sound Library
+Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney
+License: CC0 1.0 Universal
+https://creativecommons.org/publicdomain/zero/1.0/
+https://opengameart.org/content/the-free-firearm-sound-library
+
+Four trimmed mono rifle derivatives reused unchanged from Tiny Zombies release
+ccc932b7f541086c8ff17e5bf0df12c4eee2a950 (CC0).
+Source hashes, exact clip hashes and processing are in gunfire-manifest.json.
