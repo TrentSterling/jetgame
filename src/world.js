@@ -40,7 +40,17 @@ export function makeWorld(scene){
  const terrain=new T.Group();terrain.name='Terrain';terrain.userData={heightfieldResolution:128,workers:4};scene.add(terrain);
  const stream=new TerrainStream(terrain,groundMat),ready=stream.ready;
  const solids=[];const line=material('#b4ac88'),hangar=material('#6c7b76'),roof=material('#435554'),dark=material('#293d3d'),orange=material('#d59b47');
- for(const o of obstacles){const base=height(o.x,o.z);const b=box(scene,[o.w,o.h,o.d],[o.x,base+o.h/2,o.z],hangar);solids.push(b);
+ for(const o of obstacles){const base=height(o.x,o.z);
+  if(o.turret)continue;
+  if(o.defense){
+   const b=box(scene,[o.w,o.h,o.d],[o.x,base+o.h/2,o.z],hangar);solids.push(b);
+   box(scene,[o.w+.25,.22,o.d+.25],[o.x,base+.11,o.z],dark);
+   box(scene,[o.w+.08,.18,o.d+.08],[o.x,base+o.h-.22,o.z],orange);
+   const alongX=o.w>o.d,n=Math.ceil(Math.max(o.w,o.d)/6);
+   for(let j=0;j<n;j++){const t=(j+.5)/n-.5;box(scene,alongX?[.12,o.h+.08,o.d+.1]:[o.w+.1,o.h+.08,.12],[o.x+(alongX?t*o.w:0),base+o.h/2,o.z+(alongX?0:t*o.d)],roof);}
+   continue;
+  }
+  const b=box(scene,[o.w,o.h,o.d],[o.x,base+o.h/2,o.z],hangar);solids.push(b);
   box(scene,[o.w+.6,.28,o.d+.6],[o.x,base+o.h+.15,o.z],roof);
   const front=o.z+o.d/2+.04;box(scene,[o.w*.72,o.h*.64,.1],[o.x,base+o.h*.33,front],dark);
   for(let y=1;y<o.h*.65;y+=1.1)box(scene,[o.w*.7,.06,.14],[o.x,base+y,front+.1],roof);

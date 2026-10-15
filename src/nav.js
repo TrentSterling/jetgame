@@ -1,4 +1,5 @@
 import {height} from './terrain.js';
+import {perimeterWalls,turretSites} from './spawn-layout.js';
 import {rampBlocks} from './track-layout.js';
 import {obstacleList,obstacleRevision,queryObstacles} from './spatial.js';
 export const SIZE=384, HALF=SIZE/2, GRID=128, CELL=SIZE/GRID;
@@ -6,7 +7,8 @@ export const obstacles=obstacleList([
   {x:-38,z:-22,w:25,d:48,h:11},{x:42,z:-54,w:28,d:42,h:13},
   {x:-65,z:55,w:18,d:17,h:6},{x:64,z:35,w:19,d:22,h:8},
   {x:-76,z:-95,w:15,d:32,h:7},{x:78,z:-115,w:26,d:22,h:9},
-  {x:-20,z:99,w:10,d:8,h:5},
+  {x:-20,z:99,w:10,d:8,h:5},...perimeterWalls,
+  ...turretSites.map(o=>({...o,w:2.5,d:2.5,h:2.4,defense:true,turret:true})),
 ]);
 export {height} from './terrain.js';
 // Weapon occlusion samples the height function instead of the dense terrain mesh.
@@ -17,7 +19,7 @@ export function terrainRayDistance(origin,dir,range){
  return range;
 }
 export const navigationObstacles=obstacleList([...obstacles,...rampBlocks]);
-export function solid(x,z,r=.5){return queryObstacles(navigationObstacles,x-r,z-r,x+r,z+r).some(o=>Math.abs(x-o.x)<o.w/2+r&&Math.abs(z-o.z)<o.d/2+r);}
+export function solid(x,z,r=.5,includeDefenses=true){return queryObstacles(navigationObstacles,x-r,z-r,x+r,z+r).some(o=>(includeDefenses||!o.defense)&&Math.abs(x-o.x)<o.w/2+r&&Math.abs(z-o.z)<o.d/2+r);}
 export function resolveMove(pos,dx,dz,r=.6){if(!solid(pos.x+dx,pos.z,r))pos.x+=dx;if(!solid(pos.x,pos.z+dz,r))pos.z+=dz;}
 export class Field{
  constructor(){this.data=new Float32Array(GRID*GRID*4);this.cost=new Float64Array(GRID*GRID);this.blocked=new Uint8Array(GRID*GRID);this.origin={x:0,z:0};this.stamp='';this.update(0,70);}
