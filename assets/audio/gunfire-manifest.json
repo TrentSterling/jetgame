@@ -1,0 +1,163 @@
+{
+  "license": "CC0-1.0",
+  "source": {
+    "id": "firearms",
+    "author": "Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney",
+    "license": "CC0-1.0",
+    "page": {
+      "url": "https://opengameart.org/content/the-free-firearm-sound-library",
+      "file": "firearms-page.html",
+      "bytes": 43719,
+      "sha256": "4288eb3bd78a51caa6f4ab4302d8f75b48465f172911132625156a914a217091"
+    },
+    "asset": {
+      "url": "https://opengameart.org/sites/default/files/Prepared%20SFX%20Library.7z",
+      "file": "firearms.7z",
+      "bytes": 193954738,
+      "sha256": "cc1ab5a99a0a365105c7c5dd783f4b0b1fe90938114d3ceec53856bfe005f7d6"
+    },
+    "retrievedUtc": "2026-10-15T16:11:01Z"
+  },
+  "derivativeRelease": "ccc932b7f541086c8ff17e5bf0df12c4eee2a950",
+  "processing": "Select isolated one-shots; mono mean; polyphase resample; DC removal; trim at 1.2% peak retaining 0.75ms attack lead and <=12ms tail; category duration cap; 0.75ms/12ms linear edge fades; RMS match with 0.82 peak bound; optional recorded layers; lossless FLAC. No internal time-stretch or silence splice. Natural inter-layer offsets preserved.",
+  "clips": [
+    {
+      "id": "rifle-1",
+      "kind": "rifle",
+      "file": "assets/audio/rifle-1.flac",
+      "sha256": "0ce25f4231f661782adf95bb3eea5e1c84e084f944819960df8c3e428e2462bb",
+      "bytes": 7532,
+      "frames": 9120,
+      "seconds": 0.19,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.6666666666666666,
+      "peak": 0.819976806640625,
+      "rms": 0.06958655246739143,
+      "finalGain": 1.0,
+      "layers": [
+        {
+          "pack": "firearms",
+          "entry": "Prepared SFX Library/AR-15/D_32P.wav",
+          "cap": 0.19,
+          "start": 0.67,
+          "end": 0.9400000000000001,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "acee9d2106b68fe5956225a19d7aedf943d97793817f9bda9d486a2b74b0a812",
+          "sourceDuration": 10.217510416666666,
+          "trimStartSeconds": 0.7029375,
+          "trimEndSeconds": 0.8929375,
+          "gainApplied": 0.8978186494339822,
+          "sourceFrames": 9120
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    },
+    {
+      "id": "rifle-2",
+      "kind": "rifle",
+      "file": "assets/audio/rifle-2.flac",
+      "sha256": "56ff47006983447e3937eb996e6aea603dcd0cebb919434d8a2a86d19f3d1d59",
+      "bytes": 7477,
+      "frames": 9120,
+      "seconds": 0.19,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.6666666666666666,
+      "peak": 0.819976806640625,
+      "rms": 0.06287294204207261,
+      "finalGain": 1.0,
+      "layers": [
+        {
+          "pack": "firearms",
+          "entry": "Prepared SFX Library/AR-15/D_32P.wav",
+          "cap": 0.19,
+          "start": 5.61,
+          "end": 5.880000000000001,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "acee9d2106b68fe5956225a19d7aedf943d97793817f9bda9d486a2b74b0a812",
+          "sourceDuration": 10.217510416666666,
+          "trimStartSeconds": 5.646625,
+          "trimEndSeconds": 5.836625000000001,
+          "gainApplied": 0.8199874610723338,
+          "sourceFrames": 9120
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    },
+    {
+      "id": "rifle-3",
+      "kind": "rifle",
+      "file": "assets/audio/rifle-3.flac",
+      "sha256": "3b48806ceb1d5dd8f63a38e26a98158e7ccdb1aab4b0be04169aa15edcd58a13",
+      "bytes": 10330,
+      "frames": 9120,
+      "seconds": 0.19,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.020833333333333332,
+      "peak": 0.819976806640625,
+      "rms": 0.08600090617856686,
+      "finalGain": 1.0,
+      "layers": [
+        {
+          "pack": "firearms",
+          "entry": "Prepared SFX Library/AR-15/D_24P.wav",
+          "cap": 0.19,
+          "start": 0.55,
+          "end": 0.82,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "4c6a54ca0583150bbb32b7f658bc64da9ad9ba42fd3aca769c6120b44af8d3f0",
+          "sourceDuration": 6.485333333333333,
+          "trimStartSeconds": 0.55,
+          "trimEndSeconds": 0.74,
+          "gainApplied": 0.8005966642759383,
+          "sourceFrames": 9120
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    },
+    {
+      "id": "rifle-4",
+      "kind": "rifle",
+      "file": "assets/audio/rifle-4.flac",
+      "sha256": "efafcaadba8222f88413fb55c8066d5bcfb8a61c217371140f6659bd28475a73",
+      "bytes": 10381,
+      "frames": 9120,
+      "seconds": 0.19,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.75,
+      "peak": 0.819976806640625,
+      "rms": 0.08955820988091412,
+      "finalGain": 1.0,
+      "layers": [
+        {
+          "pack": "firearms",
+          "entry": "Prepared SFX Library/AR-15/D_24P.wav",
+          "cap": 0.19,
+          "start": 3.9,
+          "end": 4.17,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "4c6a54ca0583150bbb32b7f658bc64da9ad9ba42fd3aca769c6120b44af8d3f0",
+          "sourceDuration": 6.485333333333333,
+          "trimStartSeconds": 3.9090625,
+          "trimEndSeconds": 4.0990625,
+          "gainApplied": 0.803879059372547,
+          "sourceFrames": 9120
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    }
+  ],
+  "jetProcessing": "None; exact lossless derivatives. Runtime gain 0.38, four sequential variants; no playback-rate changes.",
+  "listeningStatus": "No Jet perceptual listening assessment by the agent. Signal, browser playback and native gameplay checks are separate evidence."
+}
