@@ -7,8 +7,8 @@ export const perimeterWalls=[
 ].map(o=>({...o,defense:true}));
 export const turretSites=[{x:-48,z:61},{x:54,z:85}];
 // Keep two flank packs; two approach along visible ground ahead of the runway.
-// All start beyond 88 m, leaving time to board without hiding the whole horde.
-export const homePacks=[[-120,28],[124,28],[-4,-34],[6,-70]];
+// Forward packs start beyond 189 m, retaining the protected boarding interval.
+export const homePacks=[[-120,28],[124,28],[18,-135],[18,-170]];
 export const homePackRadius=16;
 export function spawnCrowdOffset(index){
  const pack=Math.floor(index/9)%4,[x,z]=homePacks[pack],a=index*2.39996,r=Math.sqrt((index*73%997)/997)*homePackRadius;
