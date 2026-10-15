@@ -1,12 +1,19 @@
 // Stable world addresses; generation is independent of traversal order.
 export const REGION_SIZE=900;
-// Keep the full population in the region, with a small guard group and roaming
-// outskirts. A rescue should require clearing an approach, not an entire army.
-export const encounterRings={stride:16,guardMin:40,guardSpan:80,outerMin:200,outerSpan:230};
+// Keep the rescue guards, but gather the outskirts into four attackable packs.
+// Diagonal centres leave the cardinal approaches open between packs.
+export const encounterRings={stride:16,guardMin:40,guardSpan:80};
+export const encounterPacks={count:4,distance:270,radius:42};
 // Covers the opposite corner of a 3x3 region window, site jitter and outer ring
 // even while the player stands at a region edge. Relocation cannot loop in place.
 export const encounterRelocationDistance=2600;
-export function encounterRadius(index,random){const guard=Math.floor(index/9)%encounterRings.stride===0;return (guard?encounterRings.guardMin:encounterRings.outerMin)+Math.sqrt(random)*(guard?encounterRings.guardSpan:encounterRings.outerSpan);}
+export function encounterOffset(index,angle,random){
+ const ordinal=Math.floor(index/9),guard=ordinal%encounterRings.stride===0;
+ const radius=guard?encounterRings.guardMin+Math.sqrt(random)*encounterRings.guardSpan:Math.sqrt(random)*encounterPacks.radius;
+ const pack=Math.floor(ordinal/encounterRings.stride)%encounterPacks.count;
+ const bearing=(pack+.5)*Math.PI*2/encounterPacks.count;
+ return {x:Math.cos(angle)*radius+(guard?0:Math.cos(bearing)*encounterPacks.distance),z:Math.sin(angle)*radius+(guard?0:Math.sin(bearing)*encounterPacks.distance)};
+}
 export const regionKinds=['relay','quarry','settlement','depot'];
 export function regionAt(cx,cz){
  if(cx===0&&cz===0)return {id:'0,0',cx,cz,x:0,z:70,kind:'home',name:'Airfield refuge'};

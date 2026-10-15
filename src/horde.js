@@ -1,4 +1,4 @@
-import {regionsNear,encounterRadius} from './regions.js';
+import {regionsNear,encounterOffset} from './regions.js';
 import * as T from 'three/webgpu';
 import {Fn,instancedArray,uniform,uniformArray,wgslFn,instanceIndex,positionGeometry,normalLocal,attribute,vertexColor,transformNormalToView,mix,vec3,step,sin} from 'three/tsl';
 import {createKernels} from './kernels.js';
@@ -27,7 +27,7 @@ export class Horde{
   this.reset();
   this.gore=addGore(this,scene);
  }
- reset(list){this.streaming.value=list?0:1;this.generation=(this.generation||0)+1;const p=this.pos.value.array,s=this.state.value.array,v=this.vel.value.array;p.fill(0);s.fill(0);v.fill(0);const sites=regionsNear(0,0);let seed=74129;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};for(let i=0;i<this.count;i++){let x,z,hp=90;if(list){const a=list[i];x=a?.x??180;z=a?.z??180;hp=a?(a.hp??90):0;}else{const site=sites[i%sites.length];let tries=0;do{const a=rand()*Math.PI*2,r=encounterRadius(i,rand());x=site.x+Math.cos(a)*r;z=site.z+Math.sin(a)*r;}while(++tries<30&&(solid(x,z,2)||Math.hypot(x,z-70)<28));}
+ reset(list){this.streaming.value=list?0:1;this.generation=(this.generation||0)+1;const p=this.pos.value.array,s=this.state.value.array,v=this.vel.value.array;p.fill(0);s.fill(0);v.fill(0);const sites=regionsNear(0,0);let seed=74129;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};for(let i=0;i<this.count;i++){let x,z,hp=90;if(list){const a=list[i];x=a?.x??180;z=a?.z??180;hp=a?(a.hp??90):0;}else{const site=sites[i%sites.length];let tries=0;do{const q=encounterOffset(i,rand()*Math.PI*2,rand());x=site.x+q.x;z=site.z+q.z;}while(++tries<30&&(solid(x,z,2)||Math.hypot(x,z-70)<28));}
     const y=height(x,z),r=rand(),type=list?(list[i]?.type??0):(r>.93?2:r>.73?1:0);if(hp>0)hp=list?(list[i]?.hp??(type===2?340:type===1?60:90)):(type===2?340:type===1?60:90);p.set([x,y,z,0],i*4);s.set([hp,r,-10,list&&!list[i]?-1:type],i*4);v.set([0,0,0,hp?0:10],i*4);
   }for(const b of [this.blood]){b.value.array.fill(0);for(let i=0;i<this.count*3;i++)b.value.array[i*4+3]=-10;b.value.needsUpdate=true;}
   for(const b of [this.pos,this.state,this.vel])b.value.needsUpdate=true;this.counters.value.array.fill(0);this.counters.value.needsUpdate=true;this.stats={kills:0,hits:0,carKills:0,bombKills:0,carContacts:0,contactMs:0,scrap:0,skidKills:0,jetContacts:0,footContactMs:0,cabContactMs:0,meleeHits:0,missileKills:0};}
