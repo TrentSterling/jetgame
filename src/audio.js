@@ -1,5 +1,6 @@
 // Recorded combat effects and original synthesis share one bounded spatial mixer.
 // Samples load once after the start gesture; events never fetch or decode.
+// Creating an AudioContext can synchronously query the browser's output device.
 const impactBanks={impact:{file:'hit',seconds:[.25,.183541667,.25],gain:.12},crush:{file:'debris',seconds:[.436958333,.45],gain:.4},bomb:{file:'explosion',seconds:[.9,.6106875,.9],gain:.7}};
 export class BattlefieldAudio{
  constructor(){this.ctx=null;this.muted=false;this.voices=0;this.events=0;this.listener={x:0,y:0,z:0,yaw:0};this.stepTime=0;this.paused=true;this.gunSamples=[];this.gunSampleIndex=0;this.sampleEvents=0;this.gunSampleState='idle';this.effectBanks={};this.effectStates={impact:'idle',crush:'idle',bomb:'idle'};this.effectVoices={impact:0,crush:0,bomb:0};this.effectIndices={impact:0,crush:0,bomb:0};this.effectEvents=0;}
