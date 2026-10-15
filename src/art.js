@@ -1,4 +1,5 @@
 import * as T from 'three/webgpu';
+import {compositeRigid} from './composite.js';
 
 export const material=(color,metalness=0,roughness=.8)=>new T.MeshStandardMaterial({color,metalness,roughness});
 const mat={steel:material('#344348',.6,.4),dark:material('#10191d',.25,.65),rubber:material('#192026'),sand:material('#a0916d'),orange:material('#e69c3a',.35,.5),glass:material('#76b5b7',.6,.22),light:new T.MeshBasicMaterial({color:'#ffdc85'})};
@@ -29,7 +30,7 @@ export function weapon(){const g=new T.Group();
  const flash=new T.Mesh(new T.IcosahedronGeometry(.12,0),new T.MeshBasicMaterial({color:'#ffe6a0',transparent:true,opacity:.9}));flash.position.set(0,.04,-.95);flash.scale.set(.55,.55,2.6);g.add(flash);flash.visible=false;g.userData.flash=flash;
  g.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;}});return g;}
 
-export function buggy(){const g=new T.Group();
+export function buggy({batch=true}={}){const g=new T.Group();
  // Exposed tube frame, low nose and independent wheel pivots.
  box(g,[1.85,.24,3.35],[0,.87,0],mat.dark);
  box(g,[1.7,.28,1.15],[0,1.07,-1.25],mat.orange).rotation.x=.12;
@@ -83,10 +84,10 @@ export function buggy(){const g=new T.Group();
  driver.visible=false;g.userData.driver=driver;g.userData.head=head;
  g.userData.suspension=suspension;g.userData.wheels=wheels;g.userData.wheelPivots=wheelPivots;g.userData.boost=[];
  for(const s of [-1,1]){const flame=new T.Mesh(new T.ConeGeometry(.19,1.6,8),new T.MeshBasicMaterial({color:'#72dfff'}));flame.rotation.x=Math.PI/2;flame.position.set(s*.63,.9,2.4);g.add(flame);g.userData.boost.push(flame);}
- return g;
+ if(batch)batchVehicle(g);return g;
 }
 
-export function jet(){const g=new T.Group();
+export function jet({batch=true}={}){const g=new T.Group();
  const body=cylinder(g,.15,.55,6.7,[0,.1,-.6],mat.steel,10);body.rotation.x=Math.PI/2;
  const nose=new T.Mesh(new T.ConeGeometry(.48,2,10),mat.orange);nose.rotation.x=-Math.PI/2;nose.position.set(0,.1,-4.1);g.add(nose);
  const cabin=new T.Mesh(new T.SphereGeometry(.7,10,6),mat.glass);cabin.scale.set(.72,.6,1.6);cabin.position.set(0,.48,-1.4);g.add(cabin);
@@ -100,7 +101,16 @@ export function jet(){const g=new T.Group();
   for(let j=0;j<6;j++){const a=j*Math.PI/3;const barrel=cylinder(mount,.044,.044,1.2,[Math.cos(a)*.13,Math.sin(a)*.13,-.2],mat.steel,6);barrel.rotation.x=Math.PI/2;}
   const flash=new T.Mesh(new T.ConeGeometry(.3,1.4,7),new T.MeshBasicMaterial({color:'#ffe991'}));flash.rotation.x=-Math.PI/2;flash.position.z=-1.5;flash.visible=false;mount.add(flash);g.userData.flashes.push(flash);
  }
- g.traverse(o=>{if(o.isMesh)o.castShadow=true;});return g;}
+ g.traverse(o=>{if(o.isMesh)o.castShadow=true;});if(batch)batchVehicle(g);return g;}
+
+export function batchVehicle(root){
+ const u=root.userData,exclude=new Set([...(u.boost||[]),...(u.wheelPivots||[]),...(u.guns||[])]);
+ if(u.driver)exclude.add(u.driver);
+ for(const leg of u.suspension||[])for(const key of ['arm','shock','spring'])exclude.add(leg[key]);
+ for(const wheel of u.wheels||[])compositeRigid(wheel);
+ for(const gun of u.guns||[])compositeRigid(gun,new Set(u.flashes));
+ root.userData.rigidBatch=compositeRigid(root,exclude);return root;
+}
 
 export function parachute(){
  const g=new T.Group(),canopy=new T.Group();g.add(canopy);

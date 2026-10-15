@@ -6,6 +6,7 @@ import {height,obstacles,SIZE} from './nav.js';
 import {terrainFinish,addSurfaces} from './surfaces.js';
 import {noise} from './terrain.js';
 import {trackPoints} from './track-layout.js';
+import {compositeStatic} from './composite.js';
 
 
 export function makeWorld(scene){
@@ -39,32 +40,36 @@ export function makeWorld(scene){
  terrainFinish(groundMat);const surfaces=addSurfaces(scene);
  const terrain=new T.Group();terrain.name='Terrain';terrain.userData={heightfieldResolution:128,workers:4};scene.add(terrain);
  const stream=new TerrainStream(terrain,groundMat),ready=stream.ready;
+ // Keep home detail separate from the moving sky, sun and streamed terrain.
+ // Composition retains the original meshes for collision ray queries.
+ const details=new T.Group();details.name='Airfield detail';scene.add(details);
  const solids=[];const line=material('#b4ac88'),hangar=material('#6c7b76'),roof=material('#435554'),dark=material('#293d3d'),orange=material('#d59b47');
  for(const o of obstacles){const base=height(o.x,o.z);
   if(o.turret)continue;
   if(o.defense){
-   const b=box(scene,[o.w,o.h,o.d],[o.x,base+o.h/2,o.z],hangar);solids.push(b);
-   box(scene,[o.w+.25,.22,o.d+.25],[o.x,base+.11,o.z],dark);
-   box(scene,[o.w+.08,.18,o.d+.08],[o.x,base+o.h-.22,o.z],orange);
+   const b=box(details,[o.w,o.h,o.d],[o.x,base+o.h/2,o.z],hangar);solids.push(b);
+   box(details,[o.w+.25,.22,o.d+.25],[o.x,base+.11,o.z],dark);
+   box(details,[o.w+.08,.18,o.d+.08],[o.x,base+o.h-.22,o.z],orange);
    const alongX=o.w>o.d,n=Math.ceil(Math.max(o.w,o.d)/6);
-   for(let j=0;j<n;j++){const t=(j+.5)/n-.5;box(scene,alongX?[.12,o.h+.08,o.d+.1]:[o.w+.1,o.h+.08,.12],[o.x+(alongX?t*o.w:0),base+o.h/2,o.z+(alongX?0:t*o.d)],roof);}
+   for(let j=0;j<n;j++){const t=(j+.5)/n-.5;box(details,alongX?[.12,o.h+.08,o.d+.1]:[o.w+.1,o.h+.08,.12],[o.x+(alongX?t*o.w:0),base+o.h/2,o.z+(alongX?0:t*o.d)],roof);}
    continue;
   }
-  const b=box(scene,[o.w,o.h,o.d],[o.x,base+o.h/2,o.z],hangar);solids.push(b);
-  box(scene,[o.w+.6,.28,o.d+.6],[o.x,base+o.h+.15,o.z],roof);
-  const front=o.z+o.d/2+.04;box(scene,[o.w*.72,o.h*.64,.1],[o.x,base+o.h*.33,front],dark);
-  for(let y=1;y<o.h*.65;y+=1.1)box(scene,[o.w*.7,.06,.14],[o.x,base+y,front+.1],roof);
-  for(let x=-o.w/2+1;x<o.w/2;x+=4)box(scene,[.12,o.h,.14],[o.x+x,base+o.h/2,front],roof);
-  box(scene,[o.w,.4,.2],[o.x,base+o.h*.77,front+.1],orange);
+  const b=box(details,[o.w,o.h,o.d],[o.x,base+o.h/2,o.z],hangar);solids.push(b);
+  box(details,[o.w+.6,.28,o.d+.6],[o.x,base+o.h+.15,o.z],roof);
+  const front=o.z+o.d/2+.04;box(details,[o.w*.72,o.h*.64,.1],[o.x,base+o.h*.33,front],dark);
+  for(let y=1;y<o.h*.65;y+=1.1)box(details,[o.w*.7,.06,.14],[o.x,base+y,front+.1],roof);
+  for(let x=-o.w/2+1;x<o.w/2;x+=4)box(details,[.12,o.h,.14],[o.x+x,base+o.h/2,front],roof);
+  box(details,[o.w,.4,.2],[o.x,base+o.h*.77,front+.1],orange);
  }
- const tower=new T.Group();tower.position.set(-20,0,99);scene.add(tower);box(tower,[8,.5,7],[0,7.2,0],roof);box(tower,[7,3,6],[0,8.9,0],dark);for(let s of [-1,1])box(tower,[.08,1.4,5.5],[s*3.51,9.2,0],material('#a2c6bf',.5,.23));box(tower,[8,.3,7],[0,10.6,0],roof);segment(tower,[0,10.5,0],[0,20,0],.09,roof);segment(tower,[-2,17,0],[2,17,0],.05,roof);
+ const tower=new T.Group();tower.position.set(-20,0,99);details.add(tower);box(tower,[8,.5,7],[0,7.2,0],roof);box(tower,[7,3,6],[0,8.9,0],dark);for(let s of [-1,1])box(tower,[.08,1.4,5.5],[s*3.51,9.2,0],material('#a2c6bf',.5,.23));box(tower,[8,.3,7],[0,10.6,0],roof);segment(tower,[0,10.5,0],[0,20,0],.09,roof);segment(tower,[-2,17,0],[2,17,0],.05,roof);
  // Airstrip lights and wind indicators give a reference for speed and altitude.
- const lamp=new T.MeshBasicMaterial({color:'#ffce6e'});for(let z=-155;z<157;z+=18)for(let x of [-10,10]){cylinder(scene,.09,.09,.6,[x,.3,z],dark,5);box(scene,[.25,.08,.25],[x,.62,z],lamp);}
- for(let s of [-1,1]){segment(scene,[s*22,0,68],[s*22,7,68],.085,roof);const sock=new T.Mesh(new T.ConeGeometry(.5,2.6,8,1,true),orange);sock.rotation.z=-1.4;sock.position.set(s*22+1.3,6.8,68);scene.add(sock);}
+ const lamp=new T.MeshBasicMaterial({color:'#ffce6e'});for(let z=-155;z<157;z+=18)for(let x of [-10,10]){cylinder(details,.09,.09,.6,[x,.3,z],dark,5);box(details,[.25,.08,.25],[x,.62,z],lamp);}
+ for(let s of [-1,1]){segment(details,[s*22,0,68],[s*22,7,68],.085,roof);const sock=new T.Mesh(new T.ConeGeometry(.5,2.6,8,1,true),orange);sock.rotation.z=-1.4;sock.position.set(s*22+1.3,6.8,68);details.add(sock);}
  let seed=37;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
- const rockmat=material('#62685c');for(let i=0;i<45;i++){const a=rand()*Math.PI*2,r=360+rand()*280,x=Math.cos(a)*r,z=Math.sin(a)*r;const rock=new T.Mesh(new T.IcosahedronGeometry(1,1),rockmat);rock.position.set(x,height(x,z)-1,z);rock.scale.set(3+rand()*8,2+rand()*7,3+rand()*9);rock.rotation.y=rand()*6;scene.add(rock);}
+ const rockmat=material('#62685c');for(let i=0;i<45;i++){const a=rand()*Math.PI*2,r=360+rand()*280,x=Math.cos(a)*r,z=Math.sin(a)*r;const rock=new T.Mesh(new T.IcosahedronGeometry(1,1),rockmat);rock.position.set(x,height(x,z)-1,z);rock.scale.set(3+rand()*8,2+rand()*7,3+rand()*9);rock.rotation.y=rand()*6;details.add(rock);}
  // Simple industrial details, all original geometry.
- for(let i=0;i<18;i++){const x=i<9?-57:58,z=-29+(i%9)*2.3;const barrel=cylinder(scene,.5,.5,1.3,[x,height(x,z)+.65,z],orange,10);}
+ for(let i=0;i<18;i++){const x=i<9?-57:58,z=-29+(i%9)*2.3;const barrel=cylinder(details,.5,.5,1.3,[x,height(x,z)+.65,z],orange,10);}
+ compositeStatic(details);
  scene.add(sun.target);
  return {solids,terrain,sun,ready,surfaces,stream,pad:null,update(pos){stream.update(pos.x,pos.z);sky.position.copy(pos);sun.position.set(pos.x-120,pos.y+100,pos.z-200);sun.target.position.copy(pos);}};
 }

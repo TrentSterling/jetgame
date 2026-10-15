@@ -1,6 +1,7 @@
 import * as T from 'three/webgpu';
 import {attribute} from 'three/tsl';
 import {height} from './nav.js';
+import {visitOriginalParts} from './composite.js';
 
 export class VehicleEffects{
  constructor(scene){
@@ -15,7 +16,7 @@ export class VehicleEffects{
  }
  clear(){for(const p of this.parts)this.scene.remove(p.mesh);this.parts.length=0;this.clock=0;this.emitAt={car:0,jet:0};for(let i=0;i<this.smokeCount;i++){this.puffs[i].life=0;this.dummy.scale.setScalar(0);this.dummy.updateMatrix();this.smoke.setMatrixAt(i,this.dummy.matrix);this.smoke.setColorAt(i,new T.Color('#444541'));this.alpha.array[i]=0;}this.smoke.instanceMatrix.needsUpdate=true;this.alpha.needsUpdate=true;}
  puff(pos,intensity=1){const p=this.puffs[this.cursor++%this.smokeCount];p.life=p.max=1.5+Math.random();p.pos.copy(pos).add(new T.Vector3((Math.random()-.5)*.4,.6,(Math.random()-.5)*.4));p.vel.set((Math.random()-.5)*1.1,1.4+intensity, (Math.random()-.5)*1.1);p.size=.35+Math.random()*.4;this.smoke.setColorAt((this.cursor-1)%this.smokeCount,new T.Color(intensity>.6?'#292c2b':'#6a6d68'));this.smoke.instanceColor.needsUpdate=true;}
- breakup(source,velocity){source.updateWorldMatrix(true,true);source.traverseVisible(o=>{if(!o.isMesh||o.material.isMeshBasicMaterial)return;const mesh=new T.Mesh(o.geometry,this.charred);o.matrixWorld.decompose(mesh.position,mesh.quaternion,mesh.scale);mesh.castShadow=true;this.scene.add(mesh);const away=mesh.position.clone().sub(source.position).normalize();const vel=velocity.clone().multiplyScalar(.45).addScaledVector(away,5+Math.random()*6);vel.y+=5+Math.random()*7;this.parts.push({mesh,vel,spin:new T.Vector3(Math.random()*5,Math.random()*5,Math.random()*5),life:10});});while(this.parts.length>120){this.scene.remove(this.parts.shift().mesh);}}
+ breakup(source,velocity){source.updateWorldMatrix(true,true);visitOriginalParts(source,o=>{if(o.material.isMeshBasicMaterial)return;const mesh=new T.Mesh(o.geometry,this.charred);o.matrixWorld.decompose(mesh.position,mesh.quaternion,mesh.scale);mesh.castShadow=true;this.scene.add(mesh);const away=mesh.position.clone().sub(source.position).normalize();const vel=velocity.clone().multiplyScalar(.45).addScaledVector(away,5+Math.random()*6);vel.y+=5+Math.random()*7;this.parts.push({mesh,vel,spin:new T.Vector3(Math.random()*5,Math.random()*5,Math.random()*5),life:10});});while(this.parts.length>120){this.scene.remove(this.parts.shift().mesh);}}
  update(dt,vehicles){this.clock+=dt;
   for(const [kind,v] of Object.entries(vehicles)){if(v.health>0&&v.health<60&&this.clock>this.emitAt[kind]){this.emitAt[kind]=this.clock+(v.health<25?.065:.14);this.puff(v.pos,1-v.health/100);}}
   for(let i=this.parts.length-1;i>=0;i--){const p=this.parts[i];p.life-=dt;if(p.life<=0){this.scene.remove(p.mesh);this.parts.splice(i,1);continue;}const floor=height(p.mesh.position.x,p.mesh.position.z)+.18;

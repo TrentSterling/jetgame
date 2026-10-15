@@ -6,8 +6,9 @@ export const perimeterWalls=[
  {x:-38,z:140,w:24,d:2,h:1.7},{x:47,z:140,w:18,d:2,h:1.7},
 ].map(o=>({...o,defense:true}));
 export const turretSites=[{x:-48,z:61},{x:54,z:85}];
-// A short approach outside the perimeter gives a new player time to board.
-export const homePacks=[[-120,28],[124,28],[-120,126],[124,132]];
+// Keep two flank packs; two approach along visible ground ahead of the runway.
+// Forward packs start beyond 189 m, retaining the protected boarding interval.
+export const homePacks=[[-120,28],[124,28],[18,-135],[18,-170]];
 export const homePackRadius=16;
 export function spawnCrowdOffset(index){
  const pack=Math.floor(index/9)%4,[x,z]=homePacks[pack],a=index*2.39996,r=Math.sqrt((index*73%997)/997)*homePackRadius;

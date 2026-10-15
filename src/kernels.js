@@ -1,8 +1,9 @@
 import {terrainWGSL} from './terrain.js';
 import {spawnCrowdWGSL} from './spawn-layout.js';
-import {encounterRings,encounterPacks,encounterRelocationDistance} from './regions.js';
+import {localCrowdWGSL,localCrowdClearance,localCrowdRecycleDistance} from './local-crowd.js';
+import {encounterRings,encounterPacks,encounterRelocationDistance,encounterPursuitDistance} from './regions.js';
 import {
-  Fn, If, Return, atomicAdd, atomicLoad, atomicStore, instanceIndex,
+  Fn, If, Loop, Return, atomicAdd, atomicLoad, atomicStore, instanceIndex,
   float, uint, vec2, vec3, vec4, abs, atan, clamp, cos, dot, length,
   max, min, mix, normalize, pow, sin, step, wgslFn,
 } from 'three/tsl';
@@ -15,10 +16,16 @@ const cell = wgslFn(`fn cellIndex(p:vec2f)->u32 {
   return c.y*128u+c.x;
 }`);
 const ground=wgslFn(terrainWGSL);
+const localPosition=wgslFn(localCrowdWGSL);
+const outsideView=wgslFn(`fn outsideCrowdView(p:vec3f,view:mat4x4f)->bool{
+ let q=view*vec4f(p+vec3f(0.0,1.5,0.0),1.0);
+ // A margin includes the full articulated body and avoids edge popping.
+ return q.w<=0.0||q.z>q.w+4.0||q.z < -4.0||abs(q.x)>q.w*1.12+4.0||abs(q.y)>q.w*1.12+4.0;
+}`);
 
 export function createKernels(h) {
   const {pos, old, vel, state, blood, density, flow, counters, dt, time,
-    defenseOrigins, defenseRays, defenseIds, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
+    defenseOrigins, defenseRays, defenseIds, viewProjection, viewEnabled, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
 
   const cellIndex=p=>cell(p.sub(fieldOrigin));
   const inside=p=>abs(p.x.sub(fieldOrigin.x)).lessThan(188).and(abs(p.y.sub(fieldOrigin.y)).lessThan(188));
@@ -74,7 +81,18 @@ export function createKernels(h) {
       Return();
     });
 
-    If(streaming.greaterThan(.5).and(length(a.xz.sub(goal.xz)).greaterThan(encounterRelocationDistance)),()=>{
+    const guard=id.div(uint(9)).mod(uint(encounterRings.stride)).equal(uint(0));
+    If(streaming.greaterThan(.5).and(guard.not()).and(length(a.xz.sub(goal.xz)).greaterThan(localCrowdRecycleDistance)).and(viewEnabled.lessThan(.5).or(outsideView(a.xyz,viewProjection))),()=>{
+      // Choose only unoccupied navigation cells outside the current camera.
+      // The same ID keeps its existing state, health and speed seed.
+      Loop({start:uint(0),end:uint(16),type:'uint'},({i:attempt})=>{
+        const q=localPosition(id,attempt,fieldOrigin).toVar(),point=vec3(q.x,ground(q),q.y).toVar();
+        If(length(q.sub(goal.xz)).greaterThan(localCrowdClearance).and(flow.element(cellIndex(q)).w.lessThan(.5)).and(viewEnabled.lessThan(.5).or(outsideView(point,viewProjection))),()=>{
+          pos.element(id).assign(vec4(point,0));vel.element(id).assign(vec4(0));Return();
+        });
+      });
+    });
+    If(streaming.greaterThan(.5).and(guard).and(length(a.xz.sub(goal.xz)).greaterThan(encounterRelocationDistance)),()=>{
       const q=relocate(float(id),goal.xz);a.assign(vec4(q.x,ground(q),q.y,0));v.assign(vec4(0));
       pos.element(id).assign(a);vel.element(id).assign(v);Return();
     });
@@ -163,7 +181,7 @@ export function createKernels(h) {
     const distance = length(direct).toVar();
     const steer = normalize(direct.add(.001)).toVar();
     If(inside(a.xz),()=>{steer.assign(flow.element(k).xy);});
-    If(distance.greaterThan(260),()=>{steer.assign(vec2(sin(s.y.mul(91).add(time.mul(.05))),cos(s.y.mul(83).add(time.mul(.04)))).mul(.1));});
+    If(distance.greaterThan(encounterPursuitDistance),()=>{steer.assign(vec2(sin(s.y.mul(91).add(time.mul(.05))),cos(s.y.mul(83).add(time.mul(.04)))).mul(.1));});
     If(distance.lessThan(8), () => { steer.assign(normalize(direct.add(.001))); });
     const left = float(atomicLoad(density.element(max(uint(1), k).sub(1))));
     const right = float(atomicLoad(density.element(min(uint(16382), k).add(1))));
@@ -175,7 +193,7 @@ export function createKernels(h) {
       cos(s.y.mul(132.4).add(time.mul(.3)))).mul(.18));
     const speed = s.y.mul(.7).add(1.3).add(runner.mul(3.8)).sub(heavy.mul(.55))
       .mul(max(.24, float(1).sub(local.mul(.028))));
-    const desired = normalize(steer.add(.001)).mul(speed).toVar();If(distance.greaterThan(260),()=>{desired.mulAssign(.1);});
+    const desired = normalize(steer.add(.001)).mul(speed).toVar();If(distance.greaterThan(encounterPursuitDistance),()=>{desired.mulAssign(.1);});
     const blend = min(1, dt.mul(6));
     If(v.w.greaterThan(0),()=>{v.x.mulAssign(pow(.08,dt));v.z.mulAssign(pow(.08,dt));}).Else(()=>{v.assign(vec4(mix(v.x, desired.x, blend), 0, mix(v.z, desired.y, blend), 0));});
     If(v.w.lessThanEqual(0).and(distance.lessThan(1.55)).and(abs(goal.y.sub(center.y)).lessThan(2.6)), () => {
