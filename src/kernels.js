@@ -3,7 +3,7 @@ import {spawnCrowdWGSL} from './spawn-layout.js';
 import {localCrowdWGSL,localCrowdClearance,localCrowdRecycleDistance} from './local-crowd.js';
 import {encounterRings,encounterPacks,encounterRelocationDistance,encounterPursuitDistance} from './regions.js';
 import {
-  Fn, If, Return, atomicAdd, atomicLoad, atomicStore, instanceIndex,
+  Fn, If, Loop, Return, atomicAdd, atomicLoad, atomicStore, instanceIndex,
   float, uint, vec2, vec3, vec4, abs, atan, clamp, cos, dot, length,
   max, min, mix, normalize, pow, sin, step, wgslFn,
 } from 'three/tsl';
@@ -85,12 +85,12 @@ export function createKernels(h) {
     If(streaming.greaterThan(.5).and(guard.not()).and(length(a.xz.sub(goal.xz)).greaterThan(localCrowdRecycleDistance)).and(viewEnabled.lessThan(.5).or(outsideView(a.xyz,viewProjection))),()=>{
       // Choose only unoccupied navigation cells outside the current camera.
       // The same ID keeps its existing state, health and speed seed.
-      for(let attempt=0;attempt<16;attempt++){
-        const q=localPosition(id,uint(attempt),fieldOrigin).toVar(),point=vec3(q.x,ground(q),q.y).toVar();
+      Loop({start:uint(0),end:uint(16),type:'uint'},({i:attempt})=>{
+        const q=localPosition(id,attempt,fieldOrigin).toVar(),point=vec3(q.x,ground(q),q.y).toVar();
         If(length(q.sub(goal.xz)).greaterThan(localCrowdClearance).and(flow.element(cellIndex(q)).w.lessThan(.5)).and(viewEnabled.lessThan(.5).or(outsideView(point,viewProjection))),()=>{
           pos.element(id).assign(vec4(point,0));vel.element(id).assign(vec4(0));Return();
         });
-      }
+      });
     });
     If(streaming.greaterThan(.5).and(guard).and(length(a.xz.sub(goal.xz)).greaterThan(encounterRelocationDistance)),()=>{
       const q=relocate(float(id),goal.xz);a.assign(vec4(q.x,ground(q),q.y,0));v.assign(vec4(0));
