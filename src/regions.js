@@ -1,9 +1,11 @@
 // Stable world addresses; generation is independent of traversal order.
 export const REGION_SIZE=900;
-// Keep the rescue guards, but gather the outskirts into four attackable packs.
+// Keep rescue guards and four dense packs around each objective.
 // Diagonal centres leave the cardinal approaches open between packs.
 export const encounterRings={stride:16,guardMin:40,guardSpan:80};
 export const encounterPacks={count:4,distance:270,radius:42};
+// Existing saves also benefit: wake the whole outer ring without relocating it.
+export const encounterPursuitDistance=340;
 // Covers the opposite corner of a 3x3 region window, site jitter and outer ring
 // even while the player stands at a region edge. Relocation cannot loop in place.
 export const encounterRelocationDistance=2600;

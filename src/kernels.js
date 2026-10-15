@@ -1,6 +1,6 @@
 import {terrainWGSL} from './terrain.js';
 import {spawnCrowdWGSL} from './spawn-layout.js';
-import {encounterRings,encounterPacks,encounterRelocationDistance} from './regions.js';
+import {encounterRings,encounterPacks,encounterRelocationDistance,encounterPursuitDistance} from './regions.js';
 import {
   Fn, If, Return, atomicAdd, atomicLoad, atomicStore, instanceIndex,
   float, uint, vec2, vec3, vec4, abs, atan, clamp, cos, dot, length,
@@ -163,7 +163,7 @@ export function createKernels(h) {
     const distance = length(direct).toVar();
     const steer = normalize(direct.add(.001)).toVar();
     If(inside(a.xz),()=>{steer.assign(flow.element(k).xy);});
-    If(distance.greaterThan(260),()=>{steer.assign(vec2(sin(s.y.mul(91).add(time.mul(.05))),cos(s.y.mul(83).add(time.mul(.04)))).mul(.1));});
+    If(distance.greaterThan(encounterPursuitDistance),()=>{steer.assign(vec2(sin(s.y.mul(91).add(time.mul(.05))),cos(s.y.mul(83).add(time.mul(.04)))).mul(.1));});
     If(distance.lessThan(8), () => { steer.assign(normalize(direct.add(.001))); });
     const left = float(atomicLoad(density.element(max(uint(1), k).sub(1))));
     const right = float(atomicLoad(density.element(min(uint(16382), k).add(1))));
@@ -175,7 +175,7 @@ export function createKernels(h) {
       cos(s.y.mul(132.4).add(time.mul(.3)))).mul(.18));
     const speed = s.y.mul(.7).add(1.3).add(runner.mul(3.8)).sub(heavy.mul(.55))
       .mul(max(.24, float(1).sub(local.mul(.028))));
-    const desired = normalize(steer.add(.001)).mul(speed).toVar();If(distance.greaterThan(260),()=>{desired.mulAssign(.1);});
+    const desired = normalize(steer.add(.001)).mul(speed).toVar();If(distance.greaterThan(encounterPursuitDistance),()=>{desired.mulAssign(.1);});
     const blend = min(1, dt.mul(6));
     If(v.w.greaterThan(0),()=>{v.x.mulAssign(pow(.08,dt));v.z.mulAssign(pow(.08,dt));}).Else(()=>{v.assign(vec4(mix(v.x, desired.x, blend), 0, mix(v.z, desired.y, blend), 0));});
     If(v.w.lessThanEqual(0).and(distance.lessThan(1.55)).and(abs(goal.y.sub(center.y)).lessThan(2.6)), () => {
