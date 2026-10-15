@@ -324,7 +324,7 @@ async function init(){try{
  const params=new URLSearchParams(location.search);
  saves=new GameSave({horde,defenses,fleet,expeditions,player,upgrades,combat,course,readRuntime:saveRuntime,writeRuntime:restoreRuntime},{enabled:!params.has('test')||params.has('save-test'),name:params.has('save-test')?'Horde3D-test-'+params.get('save-test'):'Horde3D-expedition',status:text=>{$('save-status').textContent=text;}});
  await startup.phase('Loading expedition checkpoint',async()=>{await saves.load();if(saves.loaded){await world.stream.settled();renderer.compute([horde.clear,horde.snapshot,horde.gore.clear,horde.gore.compact]);renderer.render(scene,camera);if(horde.pending)await horde.pending;acceptStats(await horde.readStats());await renderer.compileAsync(scene,camera);}},true);
- startup.ready();
+ await fx.mixer.prepare();startup.ready();
  $('save-now').disabled=!saves.enabled||saves.blocked;if(saves.loaded)$('play').textContent='Continue expedition';
  const testMode=new URLSearchParams(location.search).has('test');if(testMode){$('gate').hidden=true;paused=true;}
  window.HordeLab={ready:true,renderer,lighting,defenses,world,scene,camera,horde,player,car,plane,fleet,expeditions,saves,audio:fx.mixer,keys,pressed,setMode,interact,nearbyVehicle,upgrades,buyUpgrade,vehicleFX,course,drivingFX,get carMesh(){return carMesh;},get jetMesh(){return jetMesh;},combat,ordnance,rideHeight,takeDamage,respawn,resetDriving,

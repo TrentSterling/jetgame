@@ -1,9 +1,13 @@
 // Recorded combat effects and original synthesis share one bounded spatial mixer.
 // Samples load once after the start gesture; events never fetch or decode.
+// Creating an AudioContext can synchronously query the browser's output device.
 const impactBanks={impact:{file:'hit',seconds:[.25,.183541667,.25],gain:.12},crush:{file:'debris',seconds:[.436958333,.45],gain:.4},bomb:{file:'explosion',seconds:[.9,.6106875,.9],gain:.7}};
 export class BattlefieldAudio{
- constructor(){this.ctx=null;this.muted=false;this.voices=0;this.events=0;this.listener={x:0,y:0,z:0,yaw:0};this.stepTime=0;this.paused=true;this.gunSamples=[];this.gunSampleIndex=0;this.sampleEvents=0;this.gunSampleState='idle';this.effectBanks={};this.effectStates={impact:'idle',crush:'idle',bomb:'idle'};this.effectVoices={impact:0,crush:0,bomb:0};this.effectIndices={impact:0,crush:0,bomb:0};this.effectEvents=0;}
- start(){if(!this.ctx){const c=this.ctx=new AudioContext();this.master=c.createGain();this.master.gain.value=.42;const limit=c.createDynamicsCompressor();this.master.connect(limit).connect(c.destination);this.noise=c.createBuffer(1,c.sampleRate*2,c.sampleRate);const data=this.noise.getChannelData(0);let last=0;for(let i=0;i<data.length;i++){last=(last+(Math.random()*2-1)*.14)/1.02;data[i]=last*2.3;}
+ constructor(){this.ctx=null;this.preparedCtx=null;this.preparing=null;this.muted=false;this.voices=0;this.events=0;this.listener={x:0,y:0,z:0,yaw:0};this.stepTime=0;this.paused=true;this.gunSamples=[];this.gunSampleIndex=0;this.sampleEvents=0;this.gunSampleState='idle';this.effectBanks={};this.effectStates={impact:'idle',crush:'idle',bomb:'idle'};this.effectVoices={impact:0,crush:0,bomb:0};this.effectIndices={impact:0,crush:0,bomb:0};this.effectEvents=0;}
+ prepare(){if(this.ctx)return Promise.resolve();if(!this.preparing)this.preparing=(async()=>{
+  let c;try{c=new AudioContext();await c.suspend();this.preparedCtx=c;}catch{if(c)await c.close().catch(()=>{});}
+ })();return this.preparing;}
+ start(){if(!this.ctx){const c=this.ctx=this.preparedCtx||new AudioContext();this.preparedCtx=null;this.master=c.createGain();this.master.gain.value=.42;const limit=c.createDynamicsCompressor();this.master.connect(limit).connect(c.destination);this.noise=c.createBuffer(1,c.sampleRate*2,c.sampleRate);const data=this.noise.getChannelData(0);let last=0;for(let i=0;i<data.length;i++){last=(last+(Math.random()*2-1)*.14)/1.02;data[i]=last*2.3;}
   this.engine=this.layer('sawtooth',48,250);this.jet=this.layer(null,0,1100);this.wind=this.layer(null,0,500);this.tire=this.layer(null,0,2400);
   this.gunLoad=this.loadGunSamples(c);
   this.effectLoad=Promise.all(Object.keys(impactBanks).map(kind=>this.loadEffectBank(c,kind)));
