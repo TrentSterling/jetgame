@@ -1,0 +1,427 @@
+{
+  "version": 1,
+  "license": "CC0-1.0",
+  "processing": "Select isolated one-shots; mono mean; polyphase resample; DC removal; trim at 1.2% peak retaining 0.75ms attack lead and <=12ms tail; category duration cap; 0.75ms/12ms linear edge fades; RMS match with 0.82 peak bound; optional recorded layers; lossless FLAC. No internal time-stretch or silence splice. Natural inter-layer offsets preserved.",
+  "immutableSourceCommit": "ccc932b7f541086c8ff17e5bf0df12c4eee2a950",
+  "listeningStatus": "No agent listening claim. Jet-specific browser, signal and gameplay qualification is separate.",
+  "sources": [
+    {
+      "id": "slime",
+      "author": "rubberduck",
+      "license": "CC0-1.0",
+      "page": {
+        "url": "https://opengameart.org/content/40-cc0-water-splash-slime-sfx",
+        "file": "slime-page.html",
+        "bytes": 29583,
+        "sha256": "d182a0d48a79c4343d31e50e293a71bb8a49f9b99a862e4adc896cff43ad90c9"
+      },
+      "asset": {
+        "url": "https://opengameart.org/sites/default/files/water-splash-slime-sfx.zip",
+        "file": "slime.zip",
+        "bytes": 2259262,
+        "sha256": "7cd39abb49d4362a37ba18dc0e454c7dc1d08029d4e5b683149046bc237b2eba"
+      },
+      "retrievedUtc": "2026-10-15T16:10:19Z"
+    },
+    {
+      "id": "debris",
+      "author": "rubberduck",
+      "license": "CC0-1.0",
+      "page": {
+        "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+        "file": "debris-page.html",
+        "bytes": 27717,
+        "sha256": "bd7acc38c47a8694a1d10e0fa160c2ab6ccc169fa252f0886684615974e085a2"
+      },
+      "asset": {
+        "url": "https://opengameart.org/sites/default/files/sfx_breaking_and_falling.zip",
+        "file": "debris.zip",
+        "bytes": 1624406,
+        "sha256": "e6ee04d91c5f4d30cfda1260d2c9d1faf96fda36319287215fbd07bcb1a80451"
+      },
+      "retrievedUtc": "2026-10-15T16:10:21Z"
+    },
+    {
+      "id": "bangs",
+      "author": "rubberduck",
+      "license": "CC0-1.0",
+      "page": {
+        "url": "https://opengameart.org/content/25-cc0-bang-firework-sfx",
+        "file": "bangs-page.html",
+        "bytes": 33861,
+        "sha256": "ac2f1bb268d6e5c5da5b4a9e88e035d83017f7da97690853a78eafeac079b399"
+      },
+      "asset": {
+        "url": "https://opengameart.org/sites/default/files/25-CC0-bang-sfx.zip",
+        "file": "bangs.zip",
+        "bytes": 1390498,
+        "sha256": "c0c9ecc11e2dc0d190f0cced755569858234b8528286bc83becb6314c663407f"
+      },
+      "retrievedUtc": "2026-10-15T16:10:22Z"
+    }
+  ],
+  "clips": [
+    {
+      "id": "hit-1",
+      "kind": "hit",
+      "file": "assets/audio/hit-1.flac",
+      "sha256": "56b6ab4562f35e3e5c47cf328f494044384169f097309156b50d0dcdd57e7d15",
+      "bytes": 11703,
+      "frames": 12000,
+      "seconds": 0.25,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.75,
+      "peak": 0.819976806640625,
+      "rms": 0.0661816412593053,
+      "finalGain": 1.0024504627402664,
+      "layers": [
+        {
+          "pack": "slime",
+          "entry": "slime_06.ogg",
+          "cap": 0.25,
+          "start": 0,
+          "end": null,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "4b01dbfa60ed6d134680023fe61911f91a04e0739c991d45338b004c4f230b6d",
+          "sourceDuration": 0.41358333333333336,
+          "trimStartSeconds": 0.019875,
+          "trimEndSeconds": 0.269875,
+          "gainApplied": 1.8919440980201998,
+          "sourceFrames": 12000
+        },
+        {
+          "pack": "debris",
+          "entry": "bfh1_wood_hit_01.ogg",
+          "cap": 0.13,
+          "start": 0,
+          "end": null,
+          "gain": 0.4,
+          "offset": 0,
+          "sourceSha256": "841caeb101eeaebcb88afed9cd64db0de1b00c7f3b06835daefaabc95b970337",
+          "sourceDuration": 0.24764583333333334,
+          "trimStartSeconds": 0.0067083333333333335,
+          "trimEndSeconds": 0.12279166666666666,
+          "gainApplied": 0.3955723436551808,
+          "sourceFrames": 5572
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    },
+    {
+      "id": "hit-2",
+      "kind": "hit",
+      "file": "assets/audio/hit-2.flac",
+      "sha256": "c59a67faadb134e32de046e8b79c958b0049fc1f45b4492cc373684e9a51edd1",
+      "bytes": 8182,
+      "frames": 8810,
+      "seconds": 0.18354166666666666,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.3541666666666667,
+      "peak": 0.819976806640625,
+      "rms": 0.05603054867152535,
+      "finalGain": 0.7740626971173702,
+      "layers": [
+        {
+          "pack": "slime",
+          "entry": "slime_12.ogg",
+          "cap": 0.25,
+          "start": 0,
+          "end": null,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "de5437b5ad2af49f6914679011bb212934986c1e13e9a4c9cf45537490f66f6e",
+          "sourceDuration": 0.2298125,
+          "trimStartSeconds": 0.004958333333333334,
+          "trimEndSeconds": 0.1885,
+          "gainApplied": 1.097258751841587,
+          "sourceFrames": 8810
+        },
+        {
+          "pack": "debris",
+          "entry": "bfh1_wood_hit_02.ogg",
+          "cap": 0.13,
+          "start": 0,
+          "end": null,
+          "gain": 0.4,
+          "offset": 0,
+          "sourceSha256": "16851c45e3d7add9f7ff8fe18d7b43e2d7d368b9bd1260d198127851b17af6d7",
+          "sourceDuration": 0.28147916666666667,
+          "trimStartSeconds": 0.0,
+          "trimEndSeconds": 0.13,
+          "gainApplied": 0.41545210176903496,
+          "sourceFrames": 6240
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    },
+    {
+      "id": "hit-3",
+      "kind": "hit",
+      "file": "assets/audio/hit-3.flac",
+      "sha256": "0c7cc37bfbfd64dcfad1485229d58dead84360a5a113241a3734e1a895bc4426",
+      "bytes": 13457,
+      "frames": 12000,
+      "seconds": 0.25,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.5208333333333334,
+      "peak": 0.819976806640625,
+      "rms": 0.06468226737170682,
+      "finalGain": 0.9999999999999999,
+      "layers": [
+        {
+          "pack": "slime",
+          "entry": "slime_14.ogg",
+          "cap": 0.25,
+          "start": 0,
+          "end": null,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "37215c6a71c3f97c87c6e687346dd4c1542276c9d22eb1c0488ba1e15ea93b79",
+          "sourceDuration": 0.4475208333333333,
+          "trimStartSeconds": 0.0121875,
+          "trimEndSeconds": 0.2621875,
+          "gainApplied": 1.2137796123153584,
+          "sourceFrames": 12000
+        },
+        {
+          "pack": "debris",
+          "entry": "bfh1_wood_hit_03.ogg",
+          "cap": 0.13,
+          "start": 0,
+          "end": null,
+          "gain": 0.4,
+          "offset": 0,
+          "sourceSha256": "3b9f304e4de3a54624cfa9e2b2326cfe4c202d3e368dd899e7dacb0d0be78f57",
+          "sourceDuration": 0.403125,
+          "trimStartSeconds": 0.0004166666666666667,
+          "trimEndSeconds": 0.13041666666666665,
+          "gainApplied": 0.42588410112886255,
+          "sourceFrames": 6240
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    },
+    {
+      "id": "explosion-1",
+      "kind": "explosion",
+      "file": "assets/audio/explosion-1.flac",
+      "sha256": "4bf9c29df114aff44c8ffa38908fa7752aaab07b8f8bb7a0750e1719a519b424",
+      "bytes": 41413,
+      "frames": 43200,
+      "seconds": 0.9,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.6458333333333334,
+      "peak": 0.819976806640625,
+      "rms": 0.05052237780036127,
+      "finalGain": 1.000546684512564,
+      "layers": [
+        {
+          "pack": "bangs",
+          "entry": "fw_02.ogg",
+          "cap": 0.9,
+          "start": 0,
+          "end": null,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "3f0e772c7608937de3e0d39167e1c7037c047f1891bbcf7f7ab6af21fe87177c",
+          "sourceDuration": 1.1106666666666667,
+          "trimStartSeconds": 0.034,
+          "trimEndSeconds": 0.934,
+          "gainApplied": 0.8185402886793138,
+          "sourceFrames": 43200
+        },
+        {
+          "pack": "debris",
+          "entry": "bfh1_rock_falling_01.ogg",
+          "cap": 0.65,
+          "start": 0,
+          "end": null,
+          "gain": 0.25,
+          "offset": 0.06,
+          "sourceSha256": "9e58d2d3302c1bad27267cef6a2b3b47bb636f49f77d8e4b986ac81a26e80d7b",
+          "sourceDuration": 0.9164791666666666,
+          "trimStartSeconds": 0.015333333333333332,
+          "trimEndSeconds": 0.6653333333333333,
+          "gainApplied": 0.24833525076712695,
+          "sourceFrames": 31200
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    },
+    {
+      "id": "explosion-2",
+      "kind": "explosion",
+      "file": "assets/audio/explosion-2.flac",
+      "sha256": "65ebe30041e192305fcfe81b8e23676e884a03d7baa15246e8992eececd898df",
+      "bytes": 17325,
+      "frames": 29313,
+      "seconds": 0.6106875,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.3333333333333333,
+      "peak": 0.819976806640625,
+      "rms": 0.026669038148445963,
+      "finalGain": 1.0,
+      "layers": [
+        {
+          "pack": "bangs",
+          "entry": "fw_05.ogg",
+          "cap": 0.9,
+          "start": 0,
+          "end": null,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "d513015c404049f5332ea4c3b0d19a764e7c26639949c7d18894635b691f4787",
+          "sourceDuration": 1.1359375,
+          "trimStartSeconds": 0.027291666666666665,
+          "trimEndSeconds": 0.6379791666666667,
+          "gainApplied": 0.8210665328914448,
+          "sourceFrames": 29313
+        },
+        {
+          "pack": "debris",
+          "entry": "bfh1_rock_falling_02.ogg",
+          "cap": 0.65,
+          "start": 0,
+          "end": null,
+          "gain": 0.25,
+          "offset": 0.06,
+          "sourceSha256": "c8421825c5e08e4bf4ed290232963aeffcf4e179c28d33a6714c5fb9704f799f",
+          "sourceDuration": 0.5056666666666667,
+          "trimStartSeconds": 0.005541666666666667,
+          "trimEndSeconds": 0.2826875,
+          "gainApplied": 0.3995019807863842,
+          "sourceFrames": 13303
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    },
+    {
+      "id": "explosion-3",
+      "kind": "explosion",
+      "file": "assets/audio/explosion-3.flac",
+      "sha256": "6139fc1f7eaa8006670610d51d59a87128a2d643e7dd03fb9a272a75e9df5e3f",
+      "bytes": 31590,
+      "frames": 43200,
+      "seconds": 0.9,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.6041666666666667,
+      "peak": 0.819976806640625,
+      "rms": 0.06354299393285476,
+      "finalGain": 1.0,
+      "layers": [
+        {
+          "pack": "bangs",
+          "entry": "fw_06.ogg",
+          "cap": 0.9,
+          "start": 0,
+          "end": null,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "3957eaa6bb83b63ee73de9a5d3a17df201dfddedf705eb29cd25a9548a8f02c2",
+          "sourceDuration": 1.3734791666666666,
+          "trimStartSeconds": 0.007979166666666667,
+          "trimEndSeconds": 0.9079791666666667,
+          "gainApplied": 0.8116838774919792,
+          "sourceFrames": 43200
+        },
+        {
+          "pack": "debris",
+          "entry": "bfh1_rock_falling_03.ogg",
+          "cap": 0.65,
+          "start": 0,
+          "end": null,
+          "gain": 0.25,
+          "offset": 0.06,
+          "sourceSha256": "16080f9bc90924b0e4ede52922529e30e34e72af32a505b39bdfc5ebcbb9248c",
+          "sourceDuration": 0.8507708333333334,
+          "trimStartSeconds": 0.04733333333333333,
+          "trimEndSeconds": 0.6802291666666667,
+          "gainApplied": 0.23408329996020955,
+          "sourceFrames": 30379
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    },
+    {
+      "id": "debris-1",
+      "kind": "debris",
+      "file": "assets/audio/debris-1.flac",
+      "sha256": "6f77d90926297832d3d6d4d3caa354380a3e0bf014fe35ea842aa7a6ea5d2c58",
+      "bytes": 18908,
+      "frames": 20974,
+      "seconds": 0.43695833333333334,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.7083333333333334,
+      "peak": 0.819976806640625,
+      "rms": 0.03755659511417001,
+      "finalGain": 1.0000000000000002,
+      "layers": [
+        {
+          "pack": "debris",
+          "entry": "bfh1_rock_breaking_01.ogg",
+          "cap": 0.45,
+          "start": 0,
+          "end": null,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "970cac3139e1530009ca87f8ee0dd800dc4da61917a5e62bdc83d475a9bf4da7",
+          "sourceDuration": 1.1465416666666666,
+          "trimStartSeconds": 0.010833333333333334,
+          "trimEndSeconds": 0.44779166666666664,
+          "gainApplied": 1.1819475572563956,
+          "sourceFrames": 20974
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    },
+    {
+      "id": "debris-2",
+      "kind": "debris",
+      "file": "assets/audio/debris-2.flac",
+      "sha256": "2b734d612f9c9cb2f03317c29f4b7a27af8f76b1fbb1536c9644c3248d94a2dd",
+      "bytes": 16590,
+      "frames": 21600,
+      "seconds": 0.45,
+      "sampleRate": 48000,
+      "channels": 1,
+      "onsetMsAtMinus46dB": 0.2708333333333333,
+      "peak": 0.819976806640625,
+      "rms": 0.026837357972003345,
+      "finalGain": 1.0,
+      "layers": [
+        {
+          "pack": "debris",
+          "entry": "bfh1_rock_breaking_02.ogg",
+          "cap": 0.45,
+          "start": 0,
+          "end": null,
+          "gain": 1,
+          "offset": 0,
+          "sourceSha256": "3e06b794511f693b6aaca5eee1d47491bab74d814746a68de6c8bf4eec744ccc",
+          "sourceDuration": 0.864625,
+          "trimStartSeconds": 0.0,
+          "trimEndSeconds": 0.45,
+          "gainApplied": 1.0326727466037258,
+          "sourceFrames": 21600
+        }
+      ],
+      "codec": "FLAC PCM16",
+      "paddingFrames": 0
+    }
+  ]
+}
