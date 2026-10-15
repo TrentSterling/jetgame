@@ -1,4 +1,5 @@
 import {terrainWGSL} from './terrain.js';
+import {spawnCrowdWGSL} from './spawn-layout.js';
 import {encounterRings,encounterPacks,encounterRelocationDistance} from './regions.js';
 import {
   Fn, If, Return, atomicAdd, atomicLoad, atomicStore, instanceIndex,
@@ -17,14 +18,14 @@ const ground=wgslFn(terrainWGSL);
 
 export function createKernels(h) {
   const {pos, old, vel, state, blood, density, flow, counters, dt, time,
-    fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
+    defenseOrigins, defenseRays, defenseIds, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
 
   const cellIndex=p=>cell(p.sub(fieldOrigin));
   const inside=p=>abs(p.x.sub(fieldOrigin.x)).lessThan(188).and(abs(p.y.sub(fieldOrigin.y)).lessThan(188));
   const relocate=wgslFn(`fn relocate(id:f32,goal:vec2f)->vec2f{
     let c=floor(goal/900.0+vec2f(.5))+vec2f((id%3.0)-1.0,(floor(id/3.0)%3.0)-1.0);
     var site=c*900.0+vec2f(sin(c.x*7.0+c.y*13.0),sin(c.x*17.0-c.y*5.0))*110.0;
-    if(all(c==vec2f(0.0))){site=vec2f(0.0,70.0);}
+    if(all(c==vec2f(0.0))){return homeCrowd(id);}
     let a=id*2.39996;
     let guard=(floor(id/9.0)%${encounterRings.stride}.0)<.5;
     let r=select(sqrt((id%229.0)/229.0)*${encounterPacks.radius}.0,${encounterRings.guardMin}.0+sqrt((id%79.0)/79.0)*${encounterRings.guardSpan}.0,guard);
@@ -32,7 +33,8 @@ export function createKernels(h) {
     let bearing=(pack+.5)*6.28318530718/${encounterPacks.count}.0;
     let offset=select(vec2f(cos(bearing),sin(bearing))*${encounterPacks.distance}.0,vec2f(0.0),guard);
     return site+offset+vec2f(cos(a),sin(a))*r;
-  }`);
+  }
+  ${spawnCrowdWGSL}`);
   const clear = Fn(() => {
     atomicStore(density.element(instanceIndex), uint(0));
     // Tail scratch slots preserve the eight-storage-buffer device limit.
@@ -99,6 +101,15 @@ export function createKernels(h) {
     });
 
     }
+    for(let i=0;i<2;i++){
+      const origin=defenseOrigins.element(i),aim=defenseRays.element(i),targetId=i===0?defenseIds.x:defenseIds.y;
+      If(origin.w.greaterThan(0).and(float(id).equal(targetId)),()=>{
+        const along=dot(center.sub(origin.xyz),aim.xyz),nearest=origin.xyz.add(aim.xyz.mul(clamp(along,0,aim.w)));
+        If(along.greaterThan(0).and(along.lessThan(aim.w)).and(length(center.sub(nearest).mul(vec3(1,.48,1))).lessThan(bodyScale.mul(.48))),()=>{
+          damage.addAssign(origin.w);impulse.addAssign(aim.xyz.mul(5).add(vec3(0,1,0)));cause.assign(7);s.z.assign(time.add(.09));
+        });
+      });
+    }
     v.w.assign(max(0,v.w.sub(dt)));
     const shoveDelta=center.sub(melee.xyz).toVar();
     const shoveDistance=length(shoveDelta).toVar();
@@ -137,7 +148,7 @@ export function createKernels(h) {
     s.x.subAssign(damage);
     If(s.x.lessThanEqual(0), () => {
       atomicAdd(counters.element(0), uint(1));
-      atomicAdd(counters.element(6), uint(float(1).add(heavy.mul(3))));
+      If(cause.notEqual(7),()=>{atomicAdd(counters.element(6), uint(float(1).add(heavy.mul(3))));});
       If(cause.equal(2), () => { atomicAdd(counters.element(2), uint(1)); });
       If(cause.equal(3), () => { atomicAdd(counters.element(3), uint(1)); });
       If(cause.equal(4), () => { atomicAdd(counters.element(7), uint(1)); });

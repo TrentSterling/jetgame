@@ -1,6 +1,7 @@
 // Versioned local checkpoints. Simulation buffers are copied on the same GPU
 // queue as the frame, then committed together in one IndexedDB transaction.
 import {regionAt,expeditionOffer} from './regions.js';
+import {migrateLegacySpawn} from './spawn-migration.js';
 export const SAVE_SCHEMA=1,WORLD_VERSION='expeditions-1';
 const bodyData=body=>Object.fromEntries(Object.entries(body).filter(([k,v])=>k==='pos'||['number','boolean','string'].includes(typeof v)).map(([k,v])=>[k,k==='pos'?v.toArray():v]));
 const setBody=(body,data)=>{for(const [k,v] of Object.entries(data))if(k==='pos')body.pos.fromArray(v);else body[k]=v;};
@@ -36,6 +37,7 @@ export function validateCheckpoint(s,count){
   }
  }
  if(!s.combat||!['car','jet'].every(k=>finite(s.combat.ammo?.[k])&&finite(s.combat.reload?.[k])&&finite(s.combat.missileDelay?.[k]))||!['stamina','shoveDelay','recoverDelay','shoveAnimation','shoves','missilesFired'].every(k=>finite(s.combat[k])))bad('combat');
+ if(s.defenses!==undefined&&(!s.defenses||s.defenses.version!==1||!Number.isInteger(s.defenses.rounds)||s.defenses.rounds<0||!Array.isArray(s.defenses.guns)||s.defenses.guns.length!==2||!s.defenses.guns.every(g=>Number.isInteger(g.shots)&&g.shots>=0&&finite(g.cooldown)&&g.cooldown>=0&&g.cooldown<=1)))bad('spawn defenses');
  if(!Array.isArray(s.broken)||s.broken.some(v=>!Number.isInteger(v)||v<0||v>=36))bad('scenery');
  for(const [key,length,Type] of [['pos',count*4,Float32Array],['state',count*4,Float32Array],['vel',count*4,Float32Array],['blood',count*12,Float32Array],['counters',13,Uint32Array]]){
   const b=s.gpu?.[key];if(!(b instanceof ArrayBuffer)||b.byteLength!==length*4)bad(key+' buffer');
@@ -66,6 +68,7 @@ export class GameSave{
   const {horde,fleet,expeditions:e,player,upgrades,combat,course,readRuntime}=this.game;
   const bodies=new Map([...fleet.saved].map(([id,b])=>[id,bodyData(b)]));for(const entry of fleet.entries)bodies.set(entry.id,bodyData(entry.body));
   const record={schema:SAVE_SCHEMA,world:WORLD_VERSION,savedAt:Date.now(),count:horde.count,player:bodyData(player),runtime:readRuntime(),upgrades:structuredClone(upgrades),combat:structuredClone(combat),fleet:{active:{car:fleet.active.car.id,jet:fleet.active.jet.id},bodies:[...bodies.values()]},expeditions:{done:[...e.done],repaired:[...e.repaired],visited:[...e.visited],refuges:structuredClone(e.refuges),party:structuredClone(e.party),rescued:e.rescued,deliveries:e.deliveries,progress:e.progress,active:e.active,missions:e.missionSnapshot()},broken:course.props.flatMap((p,i)=>p.broken?[i]:[]),streaming:horde.streaming.value};
+  record.defenses=this.game.defenses?.snapshot(record.runtime.time);
   const keys=['pos','state','vel','blood','counters'];
   // These calls submit all five copies synchronously before yielding. A later
   // simulation frame cannot land between the copied buffers.
@@ -74,6 +77,7 @@ export class GameSave{
  }
  restore(s){
   const {horde,fleet,expeditions:e,player,upgrades,combat,course,writeRuntime}=this.game;validateCheckpoint(s,horde.count);
+  const migration=migrateLegacySpawn(s);s=migration.snapshot;this.spawnMigration=migration.moved;
   fleet.restore(s.fleet);setBody(player,s.player);Object.assign(upgrades,structuredClone(s.upgrades));Object.assign(combat,structuredClone(s.combat));
   for(const k of ['done','repaired','visited'])e[k]=new Set(s.expeditions[k]);
   for(const k of ['refuges','party','rescued','deliveries','progress','active'])e[k]=structuredClone(s.expeditions[k]);
@@ -87,7 +91,7 @@ export class GameSave{
    horde.renderer.backend.updateAttribute(a);
   }
   horde.old.value.array.set(new Float32Array(s.gpu.pos));horde.old.value.needsUpdate=true;horde.streaming.value=s.streaming??1;horde.time.value=s.runtime.time;
-  writeRuntime(s.runtime);
+  writeRuntime(s.runtime);this.game.defenses?.restore(s.defenses,s.runtime.time,horde);
  }
  async commit(record){
   const db=await this.open();return new Promise((resolve,reject)=>{

@@ -1,4 +1,5 @@
 import {regionsNear,encounterOffset} from './regions.js';
+import {spawnCrowdOffset} from './spawn-layout.js';
 import * as T from 'three/webgpu';
 import {Fn,instancedArray,uniform,uniformArray,wgslFn,instanceIndex,positionGeometry,normalLocal,attribute,vertexColor,transformNormalToView,mix,vec3,step,sin} from 'three/tsl';
 import {createKernels} from './kernels.js';
@@ -19,6 +20,7 @@ export class Horde{
   this.pos=instancedArray(count,'vec4');this.old=instancedArray(count,'vec4');this.vel=instancedArray(count,'vec4');this.state=instancedArray(count,'vec4');this.density=instancedArray(GRID*GRID+2,'uint').toAtomic();this.flow=instancedArray(field.data.slice(),'vec4');this.counters=instancedArray(13,'uint').toAtomic();
   this.fieldOrigin=uniform(new T.Vector2(field.origin.x,field.origin.z));this.streaming=uniform(1);this.dt=uniform(0);this.time=uniform(0);this.goal=uniform(new T.Vector4(0,1,70,0));this.shot=uniform(new T.Vector4());this.aim=uniform(new T.Vector4(0,0,-1,100));this.blast=uniform(new T.Vector4());this.car=uniform(new T.Vector4());this.carOld=uniform(new T.Vector4());this.tool=uniform(0);this.jet=uniform(new T.Vector4());this.jetOld=uniform(new T.Vector4());
   this.rays=uniformArray(Array.from({length:6},()=>new T.Vector4()));this.melee=uniform(new T.Vector4());this.meleeAim=uniform(new T.Vector4());this.blastType=uniform(3);
+  this.defenseOrigins=uniformArray(Array.from({length:2},()=>new T.Vector4()));this.defenseRays=uniformArray(Array.from({length:2},()=>new T.Vector4()));this.defenseIds=uniform(new T.Vector2(-1,-1));
   this.blood=instancedArray(count*3,'vec4');
   Object.assign(this, createKernels(this));
   const geo=humanoid();geo.instanceCount=count;this.trianglesPerEnemy=geo.getAttribute('position').count/3;
@@ -27,7 +29,7 @@ export class Horde{
   this.reset();
   this.gore=addGore(this,scene);
  }
- reset(list){this.streaming.value=list?0:1;this.generation=(this.generation||0)+1;const p=this.pos.value.array,s=this.state.value.array,v=this.vel.value.array;p.fill(0);s.fill(0);v.fill(0);const sites=regionsNear(0,0);let seed=74129;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};for(let i=0;i<this.count;i++){let x,z,hp=90;if(list){const a=list[i];x=a?.x??180;z=a?.z??180;hp=a?(a.hp??90):0;}else{const site=sites[i%sites.length];let tries=0;do{const q=encounterOffset(i,rand()*Math.PI*2,rand());x=site.x+q.x;z=site.z+q.z;}while(++tries<30&&(solid(x,z,2)||Math.hypot(x,z-70)<28));}
+ reset(list){this.streaming.value=list?0:1;this.generation=(this.generation||0)+1;const p=this.pos.value.array,s=this.state.value.array,v=this.vel.value.array;p.fill(0);s.fill(0);v.fill(0);const sites=regionsNear(0,0);let seed=74129;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};for(let i=0;i<this.count;i++){let x,z,hp=90;if(list){const a=list[i];x=a?.x??180;z=a?.z??180;hp=a?(a.hp??90):0;}else{const site=sites[i%sites.length];let tries=0;do{const q=encounterOffset(i,rand()*Math.PI*2,rand());x=site.x+q.x;z=site.z+q.z;}while(++tries<30&&(solid(x,z,2,false)||Math.hypot(x,z-70)<28));if(site.kind==='home'){const q=spawnCrowdOffset(i);x=q.x;z=q.z;}}
     const y=height(x,z),r=rand(),type=list?(list[i]?.type??0):(r>.93?2:r>.73?1:0);if(hp>0)hp=list?(list[i]?.hp??(type===2?340:type===1?60:90)):(type===2?340:type===1?60:90);p.set([x,y,z,0],i*4);s.set([hp,r,-10,list&&!list[i]?-1:type],i*4);v.set([0,0,0,hp?0:10],i*4);
   }for(const b of [this.blood]){b.value.array.fill(0);for(let i=0;i<this.count*3;i++)b.value.array[i*4+3]=-10;b.value.needsUpdate=true;}
   for(const b of [this.pos,this.state,this.vel])b.value.needsUpdate=true;this.counters.value.array.fill(0);this.counters.value.needsUpdate=true;this.stats={kills:0,hits:0,carKills:0,bombKills:0,carContacts:0,contactMs:0,scrap:0,skidKills:0,jetContacts:0,footContactMs:0,cabContactMs:0,meleeHits:0,missileKills:0};}
