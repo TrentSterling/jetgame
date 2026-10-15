@@ -1,5 +1,6 @@
 import {terrainWGSL} from './terrain.js';
 import {spawnCrowdWGSL} from './spawn-layout.js';
+import {localCrowdWGSL,localCrowdClearance,localCrowdRecycleDistance} from './local-crowd.js';
 import {encounterRings,encounterPacks,encounterRelocationDistance,encounterPursuitDistance} from './regions.js';
 import {
   Fn, If, Return, atomicAdd, atomicLoad, atomicStore, instanceIndex,
@@ -15,10 +16,16 @@ const cell = wgslFn(`fn cellIndex(p:vec2f)->u32 {
   return c.y*128u+c.x;
 }`);
 const ground=wgslFn(terrainWGSL);
+const localPosition=wgslFn(localCrowdWGSL);
+const outsideView=wgslFn(`fn outsideCrowdView(p:vec3f,view:mat4x4f)->bool{
+ let q=view*vec4f(p+vec3f(0.0,1.5,0.0),1.0);
+ // A margin includes the full articulated body and avoids edge popping.
+ return q.w<=0.0||q.z>q.w+4.0||q.z < -4.0||abs(q.x)>q.w*1.12+4.0||abs(q.y)>q.w*1.12+4.0;
+}`);
 
 export function createKernels(h) {
   const {pos, old, vel, state, blood, density, flow, counters, dt, time,
-    defenseOrigins, defenseRays, defenseIds, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
+    defenseOrigins, defenseRays, defenseIds, viewProjection, viewEnabled, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
 
   const cellIndex=p=>cell(p.sub(fieldOrigin));
   const inside=p=>abs(p.x.sub(fieldOrigin.x)).lessThan(188).and(abs(p.y.sub(fieldOrigin.y)).lessThan(188));
@@ -74,7 +81,18 @@ export function createKernels(h) {
       Return();
     });
 
-    If(streaming.greaterThan(.5).and(length(a.xz.sub(goal.xz)).greaterThan(encounterRelocationDistance)),()=>{
+    const guard=id.div(uint(9)).mod(uint(encounterRings.stride)).equal(uint(0));
+    If(streaming.greaterThan(.5).and(guard.not()).and(length(a.xz.sub(goal.xz)).greaterThan(localCrowdRecycleDistance)).and(viewEnabled.lessThan(.5).or(outsideView(a.xyz,viewProjection))),()=>{
+      // Choose only unoccupied navigation cells outside the current camera.
+      // The same ID keeps its existing state, health and speed seed.
+      for(let attempt=0;attempt<16;attempt++){
+        const q=localPosition(id,uint(attempt),fieldOrigin).toVar(),point=vec3(q.x,ground(q),q.y).toVar();
+        If(length(q.sub(goal.xz)).greaterThan(localCrowdClearance).and(flow.element(cellIndex(q)).w.lessThan(.5)).and(viewEnabled.lessThan(.5).or(outsideView(point,viewProjection))),()=>{
+          pos.element(id).assign(vec4(point,0));vel.element(id).assign(vec4(0));Return();
+        });
+      }
+    });
+    If(streaming.greaterThan(.5).and(guard).and(length(a.xz.sub(goal.xz)).greaterThan(encounterRelocationDistance)),()=>{
       const q=relocate(float(id),goal.xz);a.assign(vec4(q.x,ground(q),q.y,0));v.assign(vec4(0));
       pos.element(id).assign(a);vel.element(id).assign(v);Return();
     });

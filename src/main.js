@@ -264,6 +264,7 @@ function step(dt){if(!horde)return;dt=Math.min(dt,.035);time+=dt;world.surfaces.
  const smashed=course.sweep(car,carBefore);if(smashed){car.boost=Math.min(1,car.boost+smashed*.05);fx.sound('crush');if(mode==='car')shakes=.08;}
  if(pendingBlasts.length&&blast.w===0){const event=pendingBlasts.shift();blast.copy(event.value||event);blastType=event.type||3;}
  defenses.update(dt,time,horde);
+ horde.updateView(camera);
  horde.step(dt,time,target,shot,blast,carNow,carBefore,mode==='jet'?3:1,jetNow,jetBefore,melee,meleeAim,blastType);
  course.update(dt);drivingFX.update(dt);fx.update(dt);vehicleFX.update(dt,{car,jet:plane});recoil=Math.max(0,recoil-dt*8);if(recoil<.55)gun.userData.flash.visible=false;shakes*=Math.exp(-dt*15);hitFade=Math.max(0,hitFade-dt*5);damageFade=Math.max(0,damageFade-dt*2);
  if(time>statsAt){statsAt=time+.14;horde.readStats().then(s=>acceptStats(s));}
