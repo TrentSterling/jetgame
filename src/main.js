@@ -246,7 +246,7 @@ function updateControls(dt){
 }
 function acceptStats(s){
  const hits=s.hits-previousHits,carHits=s.carContacts-previousCar,jetHits=s.jetContacts-previousJet;
- if(hits>0){hitFade=1;fx.sound('hit');}
+ if(hits>0){hitFade=1;fx.sound('impact');}
  takeDamage(Math.max(0,s.footContactMs-previousFoot)*.006,'foot');takeDamage(Math.max(0,s.cabContactMs-previousCab)*.0015,'car');
  if(carHits>0){hitFade=1;fx.sound('crush');takeDamage(carHits*.025,'car');const drag=Math.max(.62,1-carHits*.007);car.vx*=drag;car.vz*=drag;car.speed*=drag;car._speed=car.speed;if(mode==='car')shakes=Math.min(.3,carHits*.025);}
  if(jetHits>0){hitFade=1;fx.sound('crush');takeDamage(jetHits*.018,'jet');if(mode==='jet')shakes=Math.min(.055,jetHits*.004);}
