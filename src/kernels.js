@@ -1,5 +1,5 @@
 import {terrainWGSL} from './terrain.js';
-import {encounterRings,encounterRelocationDistance} from './regions.js';
+import {encounterRings,encounterPacks,encounterRelocationDistance} from './regions.js';
 import {
   Fn, If, Return, atomicAdd, atomicLoad, atomicStore, instanceIndex,
   float, uint, vec2, vec3, vec4, abs, atan, clamp, cos, dot, length,
@@ -21,7 +21,18 @@ export function createKernels(h) {
 
   const cellIndex=p=>cell(p.sub(fieldOrigin));
   const inside=p=>abs(p.x.sub(fieldOrigin.x)).lessThan(188).and(abs(p.y.sub(fieldOrigin.y)).lessThan(188));
-  const relocate=wgslFn(`fn relocate(id:f32,goal:vec2f)->vec2f{let c=floor(goal/900.0+vec2f(.5))+vec2f((id%3.0)-1.0,(floor(id/3.0)%3.0)-1.0);var site=c*900.0+vec2f(sin(c.x*7.0+c.y*13.0),sin(c.x*17.0-c.y*5.0))*110.0;if(all(c==vec2f(0.0))){site=vec2f(0.0,70.0);}let a=id*2.39996;let guard=(floor(id/9.0)%${encounterRings.stride}.0)<.5;let r=select(${encounterRings.outerMin}.0+sqrt((id%229.0)/229.0)*${encounterRings.outerSpan}.0,${encounterRings.guardMin}.0+sqrt((id%79.0)/79.0)*${encounterRings.guardSpan}.0,guard);return site+vec2f(cos(a),sin(a))*r;}`);
+  const relocate=wgslFn(`fn relocate(id:f32,goal:vec2f)->vec2f{
+    let c=floor(goal/900.0+vec2f(.5))+vec2f((id%3.0)-1.0,(floor(id/3.0)%3.0)-1.0);
+    var site=c*900.0+vec2f(sin(c.x*7.0+c.y*13.0),sin(c.x*17.0-c.y*5.0))*110.0;
+    if(all(c==vec2f(0.0))){site=vec2f(0.0,70.0);}
+    let a=id*2.39996;
+    let guard=(floor(id/9.0)%${encounterRings.stride}.0)<.5;
+    let r=select(sqrt((id%229.0)/229.0)*${encounterPacks.radius}.0,${encounterRings.guardMin}.0+sqrt((id%79.0)/79.0)*${encounterRings.guardSpan}.0,guard);
+    let pack=floor(floor(id/9.0)/${encounterRings.stride}.0)%${encounterPacks.count}.0;
+    let bearing=(pack+.5)*6.28318530718/${encounterPacks.count}.0;
+    let offset=select(vec2f(cos(bearing),sin(bearing))*${encounterPacks.distance}.0,vec2f(0.0),guard);
+    return site+offset+vec2f(cos(a),sin(a))*r;
+  }`);
   const clear = Fn(() => {
     atomicStore(density.element(instanceIndex), uint(0));
     // Tail scratch slots preserve the eight-storage-buffer device limit.
