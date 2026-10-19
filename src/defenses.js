@@ -1,13 +1,14 @@
 import * as T from 'three/webgpu';
 import {box,cylinder,material} from './art.js';
 import {height,terrainRayDistance} from './nav.js';
+import {CrowdSnapshot} from './crowd-snapshot.js';
 import {turretSites} from './spawn-layout.js';
 
 // Two independent guns. Asynchronous snapshots are sampled four times a second;
 // no readback blocks the animation loop and no player weapon state is reused.
 export class SpawnDefenses{
  constructor(scene,world,fx){
-  this.world=world;this.fx=fx;this.ray=new T.Raycaster();this.pending=null;
+  this.world=world;this.fx=fx;this.crowdSnapshot=new CrowdSnapshot();this.ray=new T.Raycaster();this.pending=null;
   const steel=material('#435554',.35,.62),dark=material('#293d3d',.3,.65),trim=material('#d59b47');
   this.guns=turretSites.map(({x,z},i)=>{
    const root=new T.Group();root.position.set(x,height(x,z),z);scene.add(root);
@@ -25,7 +26,7 @@ export class SpawnDefenses{
   });
   this.reset();
  }
- reset(time=0){this.epoch=(this.epoch||0)+1;this.generation=-1;this.nextScan=time;this.lastScan=-Infinity;this.scans=0;this.errors=[];this.rounds=0;this.blocked=0;for(const [i,g] of this.guns.entries()){g.target=null;g.nextFire=time+.3+i*.16;g.flashUntil=0;g.shots=0;g.flash.visible=false;g.pivot.rotation.set(0,i?Math.PI:0,0);}}
+ reset(time=0){this.crowdSnapshot.reset();this.epoch=(this.epoch||0)+1;this.generation=-1;this.nextScan=time;this.lastScan=-Infinity;this.scans=0;this.errors=[];this.rounds=0;this.blocked=0;for(const [i,g] of this.guns.entries()){g.target=null;g.nextFire=time+.3+i*.16;g.flashUntil=0;g.shots=0;g.flash.visible=false;g.pivot.rotation.set(0,i?Math.PI:0,0);}}
  warm(on){for(const g of this.guns)g.flash.visible=on;}
  clearShots(h){h.defenseIds.value.set(-1,-1);for(const o of h.defenseOrigins.array)o.w=0;}
  visible(origin,point,ownGun=-1){
@@ -41,9 +42,9 @@ export class SpawnDefenses{
   if(this.pending)return this.pending;
   const epoch=this.epoch,generation=h.generation;
   const task=(async()=>{
-   const [pb,sb]=await Promise.all([h.renderer.getArrayBufferAsync(h.pos.value),h.renderer.getArrayBufferAsync(h.state.value)]);
-   if(epoch!==this.epoch||generation!==h.generation)return;
-   const p=new Float32Array(pb),s=new Float32Array(sb),choices=this.guns.map(()=>[]);
+   const snapshot=await this.crowdSnapshot.read(h,time);
+   if(!snapshot||epoch!==this.epoch||generation!==h.generation)return;
+   const p=snapshot.positions,s=snapshot.states,choices=this.guns.map(()=>[]);
    for(let id=0;id<h.count;id++){const k=id*4;if(s[k]<=0)continue;
     for(let i=0;i<this.guns.length;i++){const g=this.guns[i],d=(p[k]-g.origin.x)**2+(p[k+2]-g.origin.z)**2;if(d<58*58&&d>4)choices[i].push({id,d,threat:p[k]**2+(p[k+2]-70)**2,x:p[k],y:p[k+1]+.95*(s[k+3]===2?1.6:1),z:p[k+2]});}
    }

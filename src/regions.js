@@ -25,4 +25,8 @@ export function regionAt(cx,cz){
  return {id:`${cx},${cz}`,cx,cz,x,z,kind,name:`${names[kind]} ${cx}:${cz}`};
 }
 export function regionsNear(x,z,radius=1){const cx=Math.round(x/900),cz=Math.round(z/900),out=[];for(let dz=-radius;dz<=radius;dz++)for(let dx=-radius;dx<=radius;dx++)out.push(regionAt(cx+dx,cz+dz));return out;}
-export function expeditionOffer(site){return {people:site.kind==='settlement'?4:site.kind==='relay'?2:3,reward:site.kind==='settlement'?180:120};}
+// Counts belong to an offer when it is first generated. Saved missions retain
+// their original people array, including the smaller pre-bot rescue parties.
+export function expeditionOffer(site){return {people:site.kind==='settlement'?6:site.kind==='depot'?5:site.kind==='relay'?2:4,reward:site.kind==='settlement'?180:120};}
+export function legacyExpeditionPeople(site){return site.kind==='home'?0:site.kind==='settlement'?4:site.kind==='relay'?2:3;}
+export function validExpeditionPeople(site,count){return Number.isInteger(count)&&(count===legacyExpeditionPeople(site)||count===(site.kind==='home'?0:expeditionOffer(site).people));}

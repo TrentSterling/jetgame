@@ -36,7 +36,7 @@ export class Expeditions{
   for(const spec of nearby)if(!this.sites.has(spec.id))this.sites.set(spec.id,this.build(spec));
  }
  build(spec){
-  const group=new T.Group(),site={...spec,group,boxes:[],solids:[],people:[],count:expeditionOffer(spec).people,reward:expeditionOffer(spec).reward};group.position.set(spec.x,height(spec.x,spec.z),spec.z);this.scene.add(group);site.ready=this.repaired.has(site.id);
+  const savedState=this.missions.get(spec.id),group=new T.Group(),site={...spec,group,boxes:[],solids:[],people:[],count:savedState?.people.length??expeditionOffer(spec).people,reward:expeditionOffer(spec).reward};group.position.set(spec.x,height(spec.x,spec.z),spec.z);this.scene.add(group);site.ready=this.repaired.has(site.id);
   const steel=material('#374b4a',.35),roof=material('#71614b'),stone=material('#9e6241'),paint=material('#d0c4a3');
   const building=(x,z,w,d,h,m=roof)=>{const b={x:spec.x+x,z:spec.z+z,w,d,h};obstacles.push(b);navigationObstacles.push(b);site.boxes.push(b);const mesh=box(group,[w,h,d],[x,h/2,z],m);site.solids.push(mesh);this.solids.push(mesh);box(group,[w+.7,.3,d+.7],[x,h+.15,z],steel);box(group,[w*.45,h*.65,.12],[x,h*.33,z+d/2+.07],steel);};
   if(spec.kind==='home'){
@@ -65,17 +65,23 @@ export class Expeditions{
    const marker=new T.Mesh(new T.CylinderGeometry(.12,.12,4,8),new T.MeshBasicMaterial({color:'#8ddaca',transparent:true,opacity:.7,depthWrite:false}));marker.position.y=2.5;kit.add(marker);
   }
   site.count=site.people.length;
-  site.state=this.missions.get(site.id)||this.freshState(site);this.missions.set(site.id,site.state);
+  site.state=savedState||this.freshState(site);this.missions.set(site.id,site.state);
   const dynamic=new Set([beacon,...site.people]);site.kit?.traverse(o=>dynamic.add(o));compositeStatic(group,dynamic);this.syncPeople(site);this.onAdd?.(group);return site;
  }
  freshState(site){return {kit:false,signal:0,people:site.people.map((_,i)=>({x:site.x-4+i*2,z:site.z-1}))};}
+ setPeopleCount(site,count){
+  while(site.people.length>count){const mesh=site.people.pop();site.group.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
+  while(site.people.length<count){const mesh=survivor(site.people.length);site.group.add(mesh);site.people.push(mesh);this.onAdd?.(mesh);}
+  site.count=count;
+ }
  peopleVisible(site){return (!this.done.has(site.id)||site.kind==='relay')&&this.party?.id!==site.id;}
  syncPeople(site,visibility=true){for(let i=0;i<site.people.length;i++){const p=site.state.people[i],m=site.people[i];m.position.set(p.x-site.group.position.x,height(p.x,p.z)-site.group.position.y,p.z-site.group.position.z);if(visibility)m.visible=this.peopleVisible(site);}if(site.kit)site.kit.visible=!site.state.kit&&!site.ready;}
  missionSnapshot(){return {version:1,relays:this.relays,sites:[...this.missions].map(([id,state])=>[id,structuredClone(state)])};}
  restoreMissions(snapshot){
-  this.relays=snapshot?.relays||0;this.missions=new Map(snapshot?.sites||[]);this.boarding=null;
+  this.relays=snapshot?.relays||0;this.missions=new Map((snapshot?.sites||[]).map(([id,state])=>[id,structuredClone(state)]));this.boarding=null;
   for(const site of this.sites.values()){
-   site.state=this.missions.get(site.id)||this.freshState(site);this.missions.set(site.id,site.state);this.syncPeople(site);
+   const state=this.missions.get(site.id);this.setPeopleCount(site,state?.people.length??(site.kind==='home'?0:expeditionOffer(site).people));
+   site.state=state||this.freshState(site);this.missions.set(site.id,site.state);this.syncPeople(site);
    for(const m of site.people){m.userData.path={};poseSurvivor(m,false,0);}
   }
  }
@@ -140,6 +146,6 @@ export class Expeditions{
   if(s.kind==='quarry'&&!s.state.kit)return `Medical crate · ${Math.round(Math.hypot(pos.x-s.x-10,pos.z-s.z-13))} m · hold F to collect ${Math.floor(this.progress/2*100)}%`;
   return mode==='foot'?`Hold F to ${s.kind==='quarry'?'stabilize survivors':'repair radio'} ${Math.floor(this.progress/6*100)}%`:'Exit and help the shelter';
  }
- reset(){this.done.clear();this.repaired.clear();this.visited.clear();this.refuges.length=1;this.party=null;this.rescued=this.deliveries=this.progress=this.relays=0;this.active=null;this.missions.clear();this.boarding=null;for(const s of this.sites.values()){s.ready=false;s.state=this.freshState(s);this.missions.set(s.id,s.state);for(const m of s.people){m.userData.path={};poseSurvivor(m,false,0);}this.syncPeople(s);}}
+ reset(){this.done.clear();this.repaired.clear();this.visited.clear();this.refuges.length=1;this.party=null;this.rescued=this.deliveries=this.progress=this.relays=0;this.active=null;this.missions.clear();this.boarding=null;for(const s of this.sites.values()){s.ready=false;this.setPeopleCount(s,s.kind==='home'?0:expeditionOffer(s).people);s.state=this.freshState(s);this.missions.set(s.id,s.state);for(const m of s.people){m.userData.path={};poseSurvivor(m,false,0);}this.syncPeople(s);}}
  report(){return {rescued:this.rescued,deliveries:this.deliveries,relays:this.relays,visited:this.visited.size,completed:[...this.done],party:this.party,boarding:this.boarding,progress:this.progress,target:this.target,sites:[...this.sites.values()].map(s=>({id:s.id,x:s.x,z:s.z,name:s.name,kind:s.kind,count:s.count,ready:!!s.ready,mission:missionName(s),kit:s.state.kit,signal:s.state.signal,people:s.state.people.map(p=>({...p}))})),refuges:this.refuges.length};}
 }

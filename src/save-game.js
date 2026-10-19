@@ -1,7 +1,8 @@
 // Versioned local checkpoints. Simulation buffers are copied on the same GPU
 // queue as the frame, then committed together in one IndexedDB transaction.
-import {regionAt,expeditionOffer} from './regions.js';
+import {regionAt,validExpeditionPeople} from './regions.js';
 import {migrateLegacySpawn} from './spawn-migration.js';
+import {BOT_COUNTER_COUNT,LEGACY_COUNTER_COUNT,checkpointRegion,migrateBotCheckpoint} from './bot-save-migration.js';
 export const SAVE_SCHEMA=1,WORLD_VERSION='expeditions-1';
 const bodyData=body=>Object.fromEntries(Object.entries(body).filter(([k,v])=>k==='pos'||['number','boolean','string'].includes(typeof v)).map(([k,v])=>[k,k==='pos'?v.toArray():v]));
 const setBody=(body,data)=>{for(const [k,v] of Object.entries(data))if(k==='pos')body.pos.fromArray(v);else body[k]=v;};
@@ -24,7 +25,8 @@ export function validateCheckpoint(s,count){
  if(!s.fleet.bodies.some(b=>b.fleetId===s.fleet.active.jet&&b.kind==='jet')||!s.fleet.bodies.some(b=>b.fleetId===s.fleet.active.car&&b.kind!=='jet'))bad('vehicle type');
  const e=s.expeditions;
  if(!e||!['done','repaired','visited'].every(k=>Array.isArray(e[k])&&e[k].every(v=>typeof v==='string'))||!Array.isArray(e.refuges)||!e.refuges.length||!e.refuges.every(r=>typeof r.id==='string'&&finite(r.x)&&finite(r.z))||!['rescued','deliveries','progress'].every(k=>finite(e[k])&&e[k]>=0))bad('expeditions');
- if(e.party&&(!ids.has(e.party.vehicle)||!finite(e.party.count)||!finite(e.party.reward)||!finite(e.party.x)||!finite(e.party.z)||typeof e.party.id!=='string'))bad('passengers');
+ const partySite=e.party&&checkpointRegion(e.party.id);
+ if(e.party&&(!ids.has(e.party.vehicle)||!partySite||partySite.kind==='home'||!validExpeditionPeople(partySite,e.party.count)||!finite(e.party.reward)||!finite(e.party.x)||!finite(e.party.z)))bad('passengers');
  // Optional additive data keeps all v0.8 checkpoints readable. Mission bodies
  // are validated before any runtime/GPU state is changed by restore().
  if(e.missions!==undefined){
@@ -32,17 +34,19 @@ export function validateCheckpoint(s,count){
   const seen=new Set();for(const entry of m.sites){
    if(!Array.isArray(entry)||entry.length!==2||typeof entry[0]!=='string'||!/^(-?\d+),(-?\d+)$/.test(entry[0])||seen.has(entry[0]))bad('mission address');
    seen.add(entry[0]);const coords=entry[0].split(',').map(Number);if(!coords.every(Number.isSafeInteger))bad('mission coordinates');
-   const site=regionAt(...coords),state=entry[1],count=site.kind==='home'?0:expeditionOffer(site).people;
-   if(!state||typeof state.kit!=='boolean'||!finite(state.signal)||state.signal<0||state.signal>12||!Array.isArray(state.people)||state.people.length!==count||!Array.from(state.people).every(p=>p&&finite(p.x)&&finite(p.z)&&Math.hypot(p.x-site.x,p.z-site.z)<150))bad('mission survivors');
+   const site=regionAt(...coords),state=entry[1];
+   if(!state||typeof state.kit!=='boolean'||!finite(state.signal)||state.signal<0||state.signal>12||!Array.isArray(state.people)||!validExpeditionPeople(site,state.people.length)||!Array.from(state.people).every(p=>p&&finite(p.x)&&finite(p.z)&&Math.hypot(p.x-site.x,p.z-site.z)<150))bad('mission survivors');
+   if(e.party?.id===entry[0]&&e.party.count!==state.people.length)bad('passenger mission count');
   }
  }
  if(!s.combat||!['car','jet'].every(k=>finite(s.combat.ammo?.[k])&&finite(s.combat.reload?.[k])&&finite(s.combat.missileDelay?.[k]))||!['stamina','shoveDelay','recoverDelay','shoveAnimation','shoves','missilesFired'].every(k=>finite(s.combat[k])))bad('combat');
  if(s.defenses!==undefined&&(!s.defenses||s.defenses.version!==1||!Number.isInteger(s.defenses.rounds)||s.defenses.rounds<0||!Array.isArray(s.defenses.guns)||s.defenses.guns.length!==2||!s.defenses.guns.every(g=>Number.isInteger(g.shots)&&g.shots>=0&&finite(g.cooldown)&&g.cooldown>=0&&g.cooldown<=1)))bad('spawn defenses');
  if(!Array.isArray(s.broken)||s.broken.some(v=>!Number.isInteger(v)||v<0||v>=36))bad('scenery');
- for(const [key,length,Type] of [['pos',count*4,Float32Array],['state',count*4,Float32Array],['vel',count*4,Float32Array],['blood',count*12,Float32Array],['counters',13,Uint32Array]]){
+ for(const [key,length,Type] of [['pos',count*4,Float32Array],['state',count*4,Float32Array],['vel',count*4,Float32Array],['blood',count*12,Float32Array]]){
   const b=s.gpu?.[key];if(!(b instanceof ArrayBuffer)||b.byteLength!==length*4)bad(key+' buffer');
   if(Type===Float32Array&&!new Type(b).every(Number.isFinite))bad(key+' values');
  }
+ const counters=s.gpu?.counters;if(!(counters instanceof ArrayBuffer)||![LEGACY_COUNTER_COUNT*4,BOT_COUNTER_COUNT*4].includes(counters.byteLength))bad('counters buffer');
  return s;
 }
 
@@ -77,7 +81,9 @@ export class GameSave{
  }
  restore(s){
   const {horde,fleet,expeditions:e,player,upgrades,combat,course,writeRuntime}=this.game;validateCheckpoint(s,horde.count);
-  const migration=migrateLegacySpawn(s);s=migration.snapshot;this.spawnMigration=migration.moved;
+  const migration=migrateLegacySpawn(migrateBotCheckpoint(s));s=validateCheckpoint(migration.snapshot,horde.count);
+  if(horde.counters.value.array.length!==BOT_COUNTER_COUNT)bad('runtime counters');
+  this.spawnMigration=migration.moved;
   fleet.restore(s.fleet);setBody(player,s.player);Object.assign(upgrades,structuredClone(s.upgrades));Object.assign(combat,structuredClone(s.combat));
   for(const k of ['done','repaired','visited'])e[k]=new Set(s.expeditions[k]);
   for(const k of ['refuges','party','rescued','deliveries','progress','active'])e[k]=structuredClone(s.expeditions[k]);
@@ -92,6 +98,8 @@ export class GameSave{
   }
   horde.old.value.array.set(new Float32Array(s.gpu.pos));horde.old.value.needsUpdate=true;horde.streaming.value=s.streaming??1;horde.time.value=s.runtime.time;
   writeRuntime(s.runtime);this.game.defenses?.restore(s.defenses,s.runtime.time,horde);
+  const botOrigin=s.runtime.mode==='foot'?player.pos:fleet.active[s.runtime.mode].body.pos;
+  this.game.bots?.reset(s.runtime.time,botOrigin);horde.clearBotInputs?.();
  }
  async commit(record){
   const db=await this.open();return new Promise((resolve,reject)=>{
