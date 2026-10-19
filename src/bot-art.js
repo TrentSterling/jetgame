@@ -1,6 +1,7 @@
 import * as T from 'three/webgpu';
 import {buggy} from './art.js';
 import {characterFace,characterLoft,faceFront} from './character-shapes.js';
+import {buildRammerCoachwork} from './rammer-art.js';
 
 // A deliberately small rig: five opaque draws per ally and one short-lived
 // muzzle flash. Flat, painted geometry keeps these living people distinct from
@@ -230,16 +231,7 @@ export function createBotVehicle(kind='rammer'){
  // Repaint only instance-owned geometry by baking its colors below. Avoid
  // changing art.js's shared material objects used by the player's vehicles.
  if(kind==='rammer'){
-  extra.box([3.18,1.14,.18],[0,.83,-2.58],steel,[.54,0,0]);
-  extra.box([3.26,.16,.23],[0,.34,-2.91],rust,[.54,0,0]);
-  for(const x of [-1.35,-.68,0,.68,1.35])extra.box([.09,1.0,.20],[x,.82,-2.60],bone,[.54,0,0]);
-  extra.box([1.79,.11,1.40],[0,1.29,-1.19],paint,[.12,0,0]);
-  extra.box([1.88,.15,1.45],[0,2.36,.24],steel);
-  for(const s of [-1,1]){
-   extra.box([.16,.55,1.48],[s*.94,1.26,.27],paint,[0,0,s*.08]);
-   extra.rod([s*.90,.80,-1.20],[s*1.25,.64,-2.54],.105,dark);
-   extra.box([.035,.08,1.10],[s*1.03,1.32,.18],bone);
-  }
+  buildRammerCoachwork(mesh,material,PaintedPart);
  }else if(kind==='circler'){
   // Remove the thin stock roof to make the scout unmistakably open-topped.
   for(const child of mesh.children)if(child.isMesh&&Math.abs(child.position.y-2.26)<.001)child.visible=false;
@@ -273,8 +265,10 @@ export function createBotVehicle(kind='rammer'){
   extra.box([1.96,.18,.25],[0,.79,2.49],steel);
  }
  // Uneven exposed-metal chips are solid geometry, all in the chassis batch.
- for(const s of [-1,1])for(let i=0;i<3;i++)extra.box([.06,.022,.16],[s*(.44+i*.10),1.354-i*.018,-1.46+i*.12],bone,[.12,s*.20,0]);
- extra.mesh(mesh,material,'Role-specific armor and salvage');
+ if(kind!=='rammer'){
+  for(const s of [-1,1])for(let i=0;i<3;i++)extra.box([.06,.022,.16],[s*(.44+i*.10),1.354-i*.018,-1.46+i*.12],bone,[.12,s*.20,0]);
+  extra.mesh(mesh,material,'Role-specific armor and salvage');
+ }
  u.driver.visible=true;
  for(const child of u.driver.children)if(child!==u.head)child.visible=false;
  for(const child of u.head.children)child.visible=false;
