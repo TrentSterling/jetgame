@@ -8,27 +8,111 @@ export function cylinder(g,r1,r2,h,pos,m=mat.steel,n=10){const o=new T.Mesh(new 
 export function segment(g,a,b,r,m=mat.steel){const v=new T.Vector3(...a),w=new T.Vector3(...b),o=cylinder(g,r,r,v.distanceTo(w),v.clone().add(w).multiplyScalar(.5).toArray(),m,8);o.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),w.sub(v).normalize());return o;}
 
 export function humanoid(){
- const pp=[],nn=[],cc=[],tags=[];function add(geo,p,s,c,tag=0,rot=0){if(geo.index)geo=geo.toNonIndexed();const matrix=new T.Matrix4().compose(new T.Vector3(...p),new T.Quaternion().setFromAxisAngle(new T.Vector3(1,0,0),rot),new T.Vector3(...s));geo.applyMatrix4(matrix);const color=new T.Color(c),ps=geo.getAttribute('position'),ns=geo.getAttribute('normal');for(let i=0;i<ps.count;i++){pp.push(ps.getX(i),ps.getY(i),ps.getZ(i));nn.push(ns.getX(i),ns.getY(i),ns.getZ(i));cc.push(color.r,color.g,color.b);tags.push(tag);}geo.dispose();}
- const cyl=(rt,rb,h,p,s,c,tag,rot)=>add(new T.CylinderGeometry(rt,rb,h,5),p,s,c,tag,rot);
- cyl(.27,.19,.62,[0,1.18,0],[1,1,.72],'#92866a');
- add(new T.BoxGeometry(.37,.17,.31),[0,.84,0],[1,1,1],'#3d4a44');
- add(new T.IcosahedronGeometry(.24,0),[0,1.69,-.06],[.86,1.15,.95],'#b4b58b');
- add(new T.BoxGeometry(.24,.055,.03),[0,1.71,-.24],[1,1,1],'#f5ca73');
- for(let side=-1;side<=1;side+=2){const tag=side<0?1:2;cyl(.092,.065,.56,[side*.33,1.16,-.1],[1,1,1],'#899b80',tag,-.35);add(new T.BoxGeometry(.13,.18,.15),[side*.33,.84,-.22],[1,1,1],'#b6b494',tag);
- cyl(.12,.08,.7,[side*.14,.48,0],[1,1,1],'#475853',side<0?3:4);add(new T.BoxGeometry(.19,.15,.31),[side*.14,.08,-.075],[1,1,1],'#263936',side<0?3:4);}
+ // One shared, flat-shaded mesh. All detail uses the existing color/part streams.
+ const pp=[],nn=[],cc=[],tags=[];
+ const skin='#929879',shadow='#656e59',shirt='#716a53',cloth='#404c47',boot='#25332f';
+ function tri(a,b,c,color,part=0){
+  const u=new T.Vector3(...b).sub(new T.Vector3(...a)),v=new T.Vector3(...c).sub(new T.Vector3(...a)),n=u.cross(v).normalize(),col=new T.Color(color);
+  for(const q of [a,b,c]){pp.push(...q);nn.push(n.x,n.y,n.z);cc.push(col.r,col.g,col.b);tags.push(part);}
+ }
+ function quad(a,b,c,d,color,part=0){tri(a,b,c,color,part);tri(a,c,d,color,part);}
+ // Rings run clockwise viewed from above; bevels are spent on the face, not hidden joints.
+ function loft(rings,color,part=0,bevel=false){
+  const ring=([x,y,z,w,d])=>bevel?[[x-w*.68,y,z-d],[x+w*.68,y,z-d],[x+w,y,z-d*.58],[x+w,y,z+d*.58],[x+w*.68,y,z+d],[x-w*.68,y,z+d],[x-w,y,z+d*.58],[x-w,y,z-d*.58]]:[[x-w,y,z-d],[x+w,y,z-d],[x+w,y,z+d],[x-w,y,z+d]];
+  const rr=rings.map(ring),n=rr[0].length,descending=rings.at(-1)[1]<rings[0][1];
+  const face=(a,b,c)=>descending?tri(a,c,b,faceColor,part):tri(a,b,c,faceColor,part);let faceColor;
+  for(let j=0;j<rr.length-1;j++)for(let i=0;i<n;i++){const k=(i+1)%n;faceColor=typeof color==='function'?color(j,i):color;face(rr[j][i],rr[j+1][i],rr[j+1][k]);face(rr[j][i],rr[j+1][k],rr[j][k]);}
+  for(let i=1;i<n-1;i++){faceColor=typeof color==='function'?color(0,2):color;face(rr[0][0],rr[0][i],rr[0][i+1]);const r=rr.at(-1);faceColor=typeof color==='function'?color(rr.length-2,2):color;face(r[0],r[i+1],r[i]);}
+ }
+ // Ragged jacket hem, narrow waist, broad sloping shoulders and a forward neck.
+ loft([[0,.82,.025,.19,.135],[.015,1.03,.015,.17,.12],[-.018,1.37,.055,.29,.16],[0,1.48,.045,.17,.13]],(j,i)=>j===0&&i===0?'#514c3e':shirt);
+ loft([[0,1.43,-.025,.085,.08],[0,1.59,-.09,.075,.075]],shadow);
+ // Cheekbones and jaw give a human profile; the lower face projects toward the player.
+ loft([[.035,1.53,-.15,.09,.11],[0,1.72,-.105,.174,.145],[-.012,1.87,-.07,.14,.12]],(j,i)=>i===0?skin:i===4?shadow:'#838d70',0,true);
+ // Dark orbital cavities, small cloudy eyes, nose ridge and an uneven open mouth.
+ for(const side of [-1,1]){
+  const x=side*.083;
+  quad([x-.054,1.728-side*.018,-.258],[x+.05,1.728+side*.018,-.258],[x+.041,1.69,-.259],[x-.042,1.69,-.259],'#343d32');
+  tri([x-.012,1.704,-.261],[x+.011,1.708,-.261],[x+.009,1.696,-.261],'#909678');
+ }
+ tri([-.026,1.73,-.253],[.027,1.723,-.253],[0,1.648,-.29],skin);
+ tri([-.026,1.73,-.253],[0,1.648,-.29],[-.027,1.646,-.249],shadow);
+ tri([.027,1.723,-.253],[.027,1.646,-.249],[0,1.648,-.29],'#a5aa88');
+ quad([-.053,1.626,-.266],[.05,1.616,-.266],[.034,1.575,-.253],[-.035,1.597,-.253],'#332820');
+ tri([.07,1.65,-.26],[.115,1.69,-.245],[.108,1.582,-.23],'#624333');
+ tri([.116,1.67,-.238],[.13,1.7,-.25],[.146,1.64,-.22],'#514b39');
+ // Torn shirt openings expose a dull skin tone without another material or draw.
+ tri([-.145,1.24,-.13],[-.106,1.28,-.13],[-.09,1.1,-.126],shadow);
+ tri([.10,.94,-.13],[.15,.84,-.136],[.08,.85,-.136],shadow);
+ // Open jacket seam and lapels use two thin triangles rather than extra objects.
+ tri([-.07,1.39,-.127],[.026,1.4,-.127],[.005,1.15,-.133],'#353d34');
+ for(const side of [-1,1]){
+  const arm=side<0?1:2,leg=side<0?3:4,x=side*.32;
+  // Bent elbows and mismatched torn sleeves, still driven by the same shoulder tags.
+  loft([[x*.9,1.40,.015,.095,.10],[x*1.13,1.12,-.045,.075,.075],[x*1.08,.89,-.18,.052,.055]],(j)=>j===0?(side<0?shirt:'#595f4c'):skin,arm);
+  loft([[x*1.08,.92,-.18,.038,.04],[x*1.07,.81,-.235,.061,.048],[x*1.03,.735,-.275,.044,.035]],(j,i)=>i===0?skin:shadow,arm);
+  // Knees and offset ankles break the straight-tube silhouette without extra joints.
+  loft([[side*.13,.86,.025,.115,.12],[side*.145,.45,-.035,.08,.085],[side*.15,.13,.025,.065,.07]],(j,i)=>j===0&&i===0?'#535e52':cloth,leg);
+  loft([[side*.15,.025,-.07,.095,.16],[side*.15,.16,-.035,.085,.13]],boot,leg);
+ }
  const g=new T.InstancedBufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pp,3));g.setAttribute('normal',new T.Float32BufferAttribute(nn,3));g.setAttribute('color',new T.Float32BufferAttribute(cc,3));g.setAttribute('part',new T.Float32BufferAttribute(tags,1));return g;
 }
 
-export function weapon(){const g=new T.Group();
- box(g,[.16,.2,.5],[0,0,-.1]);box(g,[.13,.13,.35],[0,.03,-.48]);box(g,[.11,.16,.09],[0,-.14,-.11],mat.dark).rotation.x=-.2;
- box(g,[.07,.25,.16],[0,-.22,-.04],mat.dark).rotation.x=.12;box(g,[.16,.12,.22],[0,.015,.22],mat.sand);
- const barrel=cylinder(g,.035,.035,.38,[0,.04,-.72],mat.dark,10);barrel.rotation.x=Math.PI/2;
- box(g,[.055,.09,.055],[0,.16,-.27],mat.dark);box(g,[.06,.013,.02],[0,.212,-.277],mat.light);
- for(let i=0;i<7;i++)box(g,[.17,.012,.016],[0,.124,-.38+i*.05],mat.dark);
- box(g,[.032,.02,.12],[.086,.035,-.05],mat.orange);
- segment(g,[.09,-.22,.18],[.16,-.27,.5],.073,mat.sand);segment(g,[-.06,-.13,-.4],[-.17,-.3,.3],.07,mat.sand);box(g,[.13,.095,.14],[-.01,-.12,-.38],mat.dark);
+export function weapon(){
+ const g=new T.Group(),body=new T.Group();g.add(body);
+ const graphite=material('#263137',.72,.32),edge=material('#66716f',.65,.37),polymer=material('#414b3d',.05,.8),grip=material('#192321',.1,.85),skin=material('#8c8466',0,.9),sleeve=material('#626651',0,.95);
+ // Chamfered receiver and perforated floating handguard keep the front profile narrow.
+ const upper=cylinder(body,.105,.105,.40,[0,.025,-.15],graphite,8);upper.rotation.x=Math.PI/2;upper.scale.x=.83;
+ box(body,[.14,.07,.33],[0,-.055,-.1],polymer);
+ const handguard=cylinder(body,.082,.082,.29,[0,.035,-.49],polymer,8);handguard.rotation.x=Math.PI/2;
+ for(const side of [-1,1]){
+  for(let i=0;i<4;i++)box(body,[.006,.027,.035],[side*.077,.045,-.59+i*.06],grip);
+  box(body,[.009,.022,.30],[side*.071,-.008,-.46],edge);
+  box(body,[.008,.016,.11],[side*.076,.015,-.11],grip);
+  const pin=cylinder(body,.012,.012,.009,[side*.075,-.025,.002],edge,8);pin.rotation.z=Math.PI/2;
+ }
+ const barrel=cylinder(body,.024,.028,.28,[0,.04,-.755],graphite,12);barrel.rotation.x=Math.PI/2;
+ const brake=cylinder(body,.037,.032,.09,[0,.04,-.9],edge,8);brake.rotation.x=Math.PI/2;
+ const bore=cylinder(body,.019,.019,.002,[0,.04,-.946],grip,10);bore.rotation.x=Math.PI/2;
+ for(const side of [-1,1])for(let i=0;i<2;i++)box(body,[.005,.018,.012],[side*.033,.04,-.88-i*.025],grip);
+ // Continuous rail, small mechanical sights, and brass-toned extractor detail.
+ box(body,[.067,.018,.62],[0,.123,-.32],graphite);
+ for(let i=0;i<11;i++)box(body,[.079,.009,.014],[0,.136,-.60+i*.05],edge);
+ const rear=new T.Mesh(new T.TorusGeometry(.025,.007,5,12),graphite);rear.position.set(0,.19,-.055);body.add(rear);
+ for(const side of [-1,1])box(body,[.012,.046,.035],[side*.031,.16,-.055],graphite);
+ box(body,[.012,.067,.02],[0,.17,-.59],graphite);box(body,[.008,.008,.008],[0,.205,-.59],mat.light);
+ box(body,[.024,.036,.13],[.086,.048,-.13],grip);
+ for(const side of [-1,1]){box(body,[.004,.007,.07],[side*.083,.076,-.26],edge);box(body,[.004,.006,.04],[side*.076,-.013,-.37],edge);}
+ const bolt=new T.Group();g.add(bolt);box(bolt,[.012,.029,.085],[.098,.049,-.12],edge);box(bolt,[.037,.017,.02],[.11,.049,-.077],graphite);g.userData.bolt=bolt;
+ // Slim buffer tube and shaped shoulder stock rather than a solid rectangular block.
+ const tube=cylinder(body,.032,.032,.25,[0,.025,.16],graphite,10);tube.rotation.x=Math.PI/2;
+ const stockShape=new T.Shape();stockShape.moveTo(-.14,.063);stockShape.lineTo(-.32,.063);stockShape.lineTo(-.35,.027);stockShape.lineTo(-.34,-.038);stockShape.lineTo(-.27,-.038);stockShape.lineTo(-.16,.008);stockShape.closePath();
+ const stock=new T.Mesh(new T.ExtrudeGeometry(stockShape,{depth:.085,bevelEnabled:true,bevelThickness:.006,bevelSize:.006,bevelSegments:1,steps:1}),polymer);stock.rotation.y=Math.PI/2;stock.position.x=-.0425;body.add(stock);box(body,[.09,.11,.025],[0,-.008,.345],grip);
+ segment(body,[0,-.04,.16],[0,-.06,.33],.021,polymer);
+ box(body,[.065,.16,.078],[0,-.15,.075],grip).rotation.x=-.28;
+ segment(body,[-.045,-.075,.08],[-.045,-.125,-.065],.009,graphite);segment(body,[-.045,-.125,-.065],[-.045,-.065,-.09],.009,graphite);
+ const magazine=new T.Group();g.add(magazine);g.userData.magazine=magazine;
+ box(magazine,[.075,.13,.11],[0,-.15,-.065],polymer).rotation.x=.10;
+ box(magazine,[.074,.095,.10],[0,-.255,-.043],polymer).rotation.x=.26;
+ box(magazine,[.084,.023,.114],[0,-.30,-.029],grip).rotation.x=.26;
+ for(let i=0;i<3;i++)for(const side of [-1,1])box(magazine,[.004,.14,.009],[side*.039,-.206,-.087+i*.033],graphite).rotation.x=.17;
+ // Cuffed arms and gloves sit around the grip and handguard; support hand animates separately.
+ segment(body,[.11,-.27,.42],[.095,-.20,.17],.058,sleeve);segment(body,[.095,-.20,.17],[.04,-.13,.074],.039,grip);
+ const palm=new T.Mesh(new T.SphereGeometry(.048,8,6),grip);palm.position.set(.036,-.145,.074);palm.scale.set(.75,1.05,1);body.add(palm);
+ segment(body,[.032,-.12,.10],[.005,-.086,.042],.018,grip);segment(body,[.005,-.086,.042],[-.018,-.09,.012],.016,grip);
+ for(let i=0;i<3;i++)box(body,[.019,.023,.038],[.058,-.13-i*.021,.053],polymer).rotation.x=-.25;
+ segment(body,[.091,-.197,.175],[.076,-.18,.153],.052,polymer);
+ const supportHand=new T.Group();g.add(supportHand);g.userData.supportHand=supportHand;
+ segment(supportHand,[-.16,-.28,.26],[-.09,-.17,-.31],.052,sleeve);segment(supportHand,[-.09,-.17,-.31],[-.035,-.07,-.43],.035,grip);
+ segment(supportHand,[-.09,-.17,-.31],[-.08,-.15,-.335],.048,polymer);
+ const supportPalm=new T.Mesh(new T.SphereGeometry(.046,8,6),grip);supportPalm.position.set(-.025,-.06,-.43);supportPalm.scale.set(1.12,.72,1.35);supportHand.add(supportPalm);
+ segment(supportHand,[-.062,-.064,-.401],[-.079,-.018,-.417],.017,grip);segment(supportHand,[-.079,-.018,-.417],[-.066,.006,-.447],.015,grip);
+ for(let i=0;i<3;i++)box(supportHand,[.027,.037,.016],[.025,-.055,-.466+i*.028],polymer).rotation.z=-.25;
  const flash=new T.Mesh(new T.IcosahedronGeometry(.12,0),new T.MeshBasicMaterial({color:'#ffe6a0',transparent:true,opacity:.9}));flash.position.set(0,.04,-.95);flash.scale.set(.55,.55,2.6);g.add(flash);flash.visible=false;g.userData.flash=flash;
- g.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;}});return g;}
+ g.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=false;}});
+ compositeRigid(body);compositeRigid(magazine);compositeRigid(supportHand);compositeRigid(bolt);
+ return g;
+}
 
 export function buggy({batch=true}={}){const g=new T.Group();
  // Exposed tube frame, low nose and independent wheel pivots.

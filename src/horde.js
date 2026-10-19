@@ -11,10 +11,23 @@ import {GRID,HALF,CELL,solid,height} from './nav.js';
 const bodyFn=wgslFn(`fn bodyVertex(q:vec3f,part:f32,p:vec4f,s:vec4f,v:vec4f,time:f32)->vec3f{
  var a=q;let alive=step(.01,s.x);let heavy=step(1.5,s.w);let runner=step(.5,s.w)-heavy;let gait=sin(time*(6.0+s.y*2.0+runner*4.0)+s.y*80.0)*(.48+runner*.18)*alive;
  if(part>.5){var pivot=vec3f(0,1.43,0);var angle=gait;if(part>2.5){pivot.y=.82;angle=-gait;}if(part==2.0||part==4.0){angle=-angle;}a-=pivot;let yy=a.y*cos(angle)-a.z*sin(angle);a.z=a.y*sin(angle)+a.z*cos(angle);a.y=yy;a+=pivot;}
- let scale=(.87+s.y*.28)*(1.0+heavy*.6);a*=scale;a.x*=1.0+heavy*.2-runner*.14;a.z-=runner*max(0.0,a.y-.8)*.15;let fall=(1.0-alive)*min(1.0,v.w*3.0)*1.48;let yy=a.y*cos(fall)-a.z*sin(fall);a.z=a.y*sin(fall)+a.z*cos(fall);a.y=yy+(1.0-alive)*.17;
+ let scale=(.87+s.y*.28)*(1.0+heavy*.6);a*=scale;a.x*=1.0+heavy*.35-runner*.22;a.y*=1.0+runner*.07;a.z-=runner*max(0.0,a.y-.8)*.15;let fall=(1.0-alive)*min(1.0,v.w*3.0)*1.48;let yy=a.y*cos(fall)-a.z*sin(fall);a.z=a.y*sin(fall)+a.z*cos(fall);a.y=yy+(1.0-alive)*.17;
  let c=cos(p.w);let sn=sin(p.w);return vec3f(a.x*c+a.z*sn,a.y,-a.x*sn+a.z*c)+p.xyz;
 }`);
-const normalFn=wgslFn(`fn bodyNormal(n:vec3f,p:vec4f,s:vec4f,v:vec4f)->vec3f {let fall=(1.0-step(.01,s.x))*min(1.0,v.w*3.0)*1.48;let a=vec3f(n.x,n.y*cos(fall)-n.z*sin(fall),n.y*sin(fall)+n.z*cos(fall));let c=cos(p.w);let sn=sin(p.w);return vec3f(a.x*c+a.z*sn,a.y,-a.x*sn+a.z*c);}`);
+// Inverse-transpose of the same gait, type stretch/shear, fall and heading as bodyVertex.
+const normalFn=wgslFn(`fn bodyNormal(n:vec3f,q:vec3f,part:f32,p:vec4f,s:vec4f,v:vec4f,time:f32)->vec3f {
+ let alive=step(.01,s.x);let heavy=step(1.5,s.w);let runner=step(.5,s.w)-heavy;let gait=sin(time*(6.0+s.y*2.0+runner*4.0)+s.y*80.0)*(.48+runner*.18)*alive;
+ // Fragment interpolation can slightly perturb integer part tags; use stable bands.
+ var a=n;var y=q.y;
+ if(part>.5){var pivot=1.43;var angle=gait;if(part>2.5){pivot=.82;angle=-gait;}if((part>1.5&&part<2.5)||part>3.5){angle=-angle;}
+  y=(q.y-pivot)*cos(angle)-q.z*sin(angle)+pivot;
+  a=vec3f(a.x,a.y*cos(angle)-a.z*sin(angle),a.y*sin(angle)+a.z*cos(angle));
+ }
+ let scale=(.87+s.y*.28)*(1.0+heavy*.6);a.x/=1.0+heavy*.35-runner*.22;a.y/=1.0+runner*.07;
+ if(y*scale*(1.0+runner*.07)>.8){a.y+=runner*.15*a.z;}
+ let fall=(1.0-alive)*min(1.0,v.w*3.0)*1.48;a=vec3f(a.x,a.y*cos(fall)-a.z*sin(fall),a.y*sin(fall)+a.z*cos(fall));
+ let c=cos(p.w);let sn=sin(p.w);return normalize(vec3f(a.x*c+a.z*sn,a.y,-a.x*sn+a.z*c));
+}`);
 
 export class Horde{
  constructor(renderer,scene,field,count=12000){this.renderer=renderer;this.count=count;this.field=field;this.stats={kills:0,hits:0,carKills:0,bombKills:0,carContacts:0,contactMs:0,scrap:0,skidKills:0,jetContacts:0,footContactMs:0,cabContactMs:0,meleeHits:0,missileKills:0};
@@ -26,7 +39,12 @@ export class Horde{
   this.blood=instancedArray(count*3,'vec4');
   Object.assign(this, createKernels(this));
   const geo=humanoid();geo.instanceCount=count;this.trianglesPerEnemy=geo.getAttribute('position').count/3;
-  const p=this.pos.toAttribute(),s=this.state.toAttribute(),v=this.vel.toAttribute();const m=new T.MeshStandardNodeMaterial({roughness:.96});m.positionNode=bodyFn({q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time});m.normalNode=transformNormalToView(normalFn({n:normalLocal,p,s,v}));m.colorNode=mix(attribute('color','vec3').mul(mix(vec3(.57,.65,.53),vec3(1.1,.84,.53),s.y)).mul(mix(vec3(1),mix(vec3(1.55,.46,.22),vec3(.47,.66,.85),step(1.5,s.w)),step(.5,s.w))),vec3(1.7,1.6,1.3),step(this.time,s.z)).mul(mix(.32,1,step(.01,s.x)));
+  const p=this.pos.toAttribute(),s=this.state.toAttribute(),v=this.vel.toAttribute();
+  // Existing seed and vertex colors select worn fabric hues; no new instance buffers.
+  const baseColor=attribute('color','vec3'),fabric=step(.012,baseColor.x.sub(baseColor.y));
+  const clothTint=mix(mix(vec3(.63,.85,1.08),vec3(1.08,.64,.52),s.y.mul(3).clamp(0,1)),vec3(.75,.94,.66),s.y.sub(.5).mul(2).clamp(0,1));
+  const variedColor=baseColor.mul(mix(vec3(1),clothTint,fabric));
+  const m=new T.MeshStandardNodeMaterial({roughness:.96});m.positionNode=bodyFn({q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time});m.normalNode=transformNormalToView(normalFn({n:normalLocal,q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time}));m.colorNode=mix(variedColor.mul(mix(vec3(.57,.65,.53),vec3(1.1,.84,.53),s.y)).mul(mix(vec3(1),mix(vec3(1.55,.46,.22),vec3(.47,.66,.85),step(1.5,s.w)),step(.5,s.w))),vec3(1.7,1.6,1.3),step(this.time,s.z)).mul(mix(.32,1,step(.01,s.x)));
   this.mesh=new T.Mesh(geo,m);this.mesh.frustumCulled=false;this.mesh.castShadow=true;this.mesh.receiveShadow=true;scene.add(this.mesh);
   this.reset();
   this.gore=addGore(this,scene);
