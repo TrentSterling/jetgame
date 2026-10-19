@@ -1,4 +1,5 @@
 import * as T from 'three/webgpu';
+import {buildJetHero} from './jet-hero-art.js';
 import {compositeRigid} from './composite.js';
 
 export const material=(color,metalness=0,roughness=.8)=>new T.MeshStandardMaterial({color,metalness,roughness});
@@ -171,21 +172,11 @@ export function buggy({batch=true}={}){const g=new T.Group();
  if(batch)batchVehicle(g);return g;
 }
 
-export function jet({batch=true}={}){const g=new T.Group();
- const body=cylinder(g,.15,.55,6.7,[0,.1,-.6],mat.steel,10);body.rotation.x=Math.PI/2;
- const nose=new T.Mesh(new T.ConeGeometry(.48,2,10),mat.orange);nose.rotation.x=-Math.PI/2;nose.position.set(0,.1,-4.1);g.add(nose);
- const cabin=new T.Mesh(new T.SphereGeometry(.7,10,6),mat.glass);cabin.scale.set(.72,.6,1.6);cabin.position.set(0,.48,-1.4);g.add(cabin);
- function wing(side,z,span,depth){const shape=new T.Shape();shape.moveTo(0,z-depth/2);shape.lineTo(side*span,z+.6);shape.lineTo(side*(span-.4),z+1.25);shape.lineTo(0,z+depth/2);const m=new T.Mesh(new T.ExtrudeGeometry(shape,{depth:.13,bevelEnabled:false}),mat.sand);m.rotation.x=Math.PI/2;g.add(m);return m;}wing(1,0,4.5,2.8);wing(-1,0,4.5,2.8);wing(1,2.3,1.9,1.2);wing(-1,2.3,1.9,1.2);
- box(g,[.12,1.55,1.5],[0,.85,2.1],mat.orange).rotation.x=-.3;
- g.userData.boost=[];
- for(let s of [-1,1]){const engine=cylinder(g,.32,.4,2.3,[s*.68,0,1.4],mat.dark,10);engine.rotation.x=Math.PI/2;const glow=new T.Mesh(new T.ConeGeometry(.3,1.8,10),new T.MeshBasicMaterial({color:'#ffa749'}));glow.rotation.x=Math.PI/2;glow.position.set(s*.68,0,3.1);g.add(glow);g.userData.boost.push(glow);}
- g.userData.guns=[];g.userData.flashes=[];
- for(const side of [-1,1]){const mount=new T.Group();mount.position.set(side*1.35,-.15,-2);g.add(mount);g.userData.guns.push(mount);
-  const housing=cylinder(mount,.22,.25,.8,[0,0,.5],mat.dark,8);housing.rotation.x=Math.PI/2;
-  for(let j=0;j<6;j++){const a=j*Math.PI/3;const barrel=cylinder(mount,.044,.044,1.2,[Math.cos(a)*.13,Math.sin(a)*.13,-.2],mat.steel,6);barrel.rotation.x=Math.PI/2;}
-  const flash=new T.Mesh(new T.ConeGeometry(.3,1.4,7),new T.MeshBasicMaterial({color:'#ffe991'}));flash.rotation.x=-Math.PI/2;flash.position.z=-1.5;flash.visible=false;mount.add(flash);g.userData.flashes.push(flash);
- }
- g.traverse(o=>{if(o.isMesh)o.castShadow=true;});if(batch)batchVehicle(g);return g;}
+// The playable JET/015 keeps the original root, weapon/exhaust anchors and
+// rigid-part metadata. Flight, collision, damage and respawn remain unchanged.
+export function jet({batch=true}={}){
+ return buildJetHero({batcher:batch?batchVehicle:null});
+}
 
 export function batchVehicle(root){
  const u=root.userData,exclude=new Set([...(u.boost||[]),...(u.wheelPivots||[]),...(u.guns||[])]);
