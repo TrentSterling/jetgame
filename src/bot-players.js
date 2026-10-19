@@ -51,7 +51,7 @@ export class BotPlayers{
    f.pos.copy(spawn(FOOT_SITES[f.index],BOT_FOOT_RADIUS));f.root.rotation.set(0,0,0);f.root.visible=true;f.target=f.goal=null;f.nextFire=time+.45+f.index*.17;f.flashUntil=0;f.shots=f.distance=f.aimPitch=0;resetBotNavigation(f.nav);poseFootBot(f.root,{walking:0,dt:0,aimPitch:0,firing:false});
   }
   for(const c of this.cars){
-   const position=spawn(CAR_SITES[c.index],BOT_CAR_RADIUS);resetBotDriver(c,position,0,time);c.target=null;c.old.copy(c.body.pos);c.mesh.visible=true;poseBotVehicle(c.mesh,c.body,0,this.ground);
+   const position=spawn(CAR_SITES[c.index],BOT_CAR_RADIUS);resetBotDriver(c,position,0,time);c.body.health=100;c.target=null;c.old.copy(c.body.pos);c.mesh.visible=true;poseBotVehicle(c.mesh,c.body,0,this.ground);
   }
   this.clearInputs(this.horde);
  }
@@ -94,7 +94,7 @@ export class BotPlayers{
    // A rammer commits briefly to its straight charge. Circler and escort
    // recompute their flanking/intercept points at the same bounded cadence.
    if(time>=c.nextDecision||!fresh||!c.goal){
-    const goal=vehiclePolicyGoal(c.kind,c.body,player,yaw,c.target,time);
+    const goal=vehiclePolicyGoal(c.kind,c.body,c===context.passengerDriver?context.passengerAnchor:player,c===context.passengerDriver?context.passengerYaw:yaw,c.target,time);
     if(!c.goal||distance(goal,c.goal)>6)c.nextPlan=Math.min(c.nextPlan,time);
     c.goal=goal;c.nextDecision=time+(c.kind==='rammer'&&c.target?1.2:.5);
    }
@@ -112,7 +112,7 @@ export class BotPlayers{
   this.lastTime=time;
   const fresh=freshBotSnapshot(context.snapshot,h.generation,time);if(!fresh)this.staleFrames++;
   if(time>=this.nextDecision)this.decide(time,context,fresh);
-  const player=context.playerPos,external=[{x:player.x,z:player.z,r:context.mode==='car'?2.3:context.mode==='jet'?4:.75},...(context.friendlies||[])];
+  const player=context.playerPos,external=[{x:player.x,z:player.z,r:context.mode==='car'?2.3:context.mode==='jet'?4:.75,passenger:context.passengerDriver},...(context.friendlies||[])];
   for(const f of this.foot){
    const friendly=[...external,...this.foot.filter(o=>o!==f).map(o=>({x:o.pos.x,z:o.pos.z,r:.6})),...this.cars.map(c=>({x:c.body.pos.x,z:c.body.pos.z,r:2.35}))];
    const beforeX=f.pos.x,beforeZ=f.pos.z,far=distance(f.pos,player)>32,speed=far?8.5:5.1;
@@ -139,7 +139,8 @@ export class BotPlayers{
   }
   for(const c of this.cars){
    c.old.copy(c.body.pos);
-   const friendlies=[...external,...this.foot.map(f=>({x:f.pos.x,z:f.pos.z,r:.65})),...this.cars.filter(o=>o!==c).map(o=>({x:o.body.pos.x,z:o.body.pos.z,r:2.35}))];
+   if((c.body.health??100)<=0||!c.mesh.visible)continue;
+   const friendlies=[...external.filter(f=>f.passenger!==c),...this.foot.map(f=>({x:f.pos.x,z:f.pos.z,r:.65})),...this.cars.filter(o=>o!==c).map(o=>({x:o.body.pos.x,z:o.body.pos.z,r:2.35}))];
    const result=updateBotDriver(c,dt,time,{ground:this.ground,obstacles:navigationObstacles,friendlies});
    poseBotVehicle(c.mesh,c.body,dt,this.ground);
    h.botCarsOld.array[c.index].set(c.old.x,c.old.y+.9,c.old.z,0);

@@ -72,6 +72,8 @@ export class GameSave{
   const {horde,fleet,expeditions:e,player,upgrades,combat,course,readRuntime}=this.game;
   const bodies=new Map([...fleet.saved].map(([id,b])=>[id,bodyData(b)]));for(const entry of fleet.entries)bodies.set(entry.id,bodyData(entry.body));
   const record={schema:SAVE_SCHEMA,world:WORLD_VERSION,savedAt:Date.now(),count:horde.count,player:bodyData(player),runtime:readRuntime(),upgrades:structuredClone(upgrades),combat:structuredClone(combat),fleet:{active:{car:fleet.active.car.id,jet:fleet.active.jet.id},bodies:[...bodies.values()]},expeditions:{done:[...e.done],repaired:[...e.repaired],visited:[...e.visited],refuges:structuredClone(e.refuges),party:structuredClone(e.party),rescued:e.rescued,deliveries:e.deliveries,progress:e.progress,active:e.active,missions:e.missionSnapshot()},broken:course.props.flatMap((p,i)=>p.broken?[i]:[]),streaming:horde.streaming.value};
+  const exit=this.game.checkpointPlayer?.();
+  if(exit){record.player.pos=[exit.x,exit.y,exit.z];record.player.vx=record.player.vz=record.player.vy=0;record.player.grounded=!exit.airborne;record.player.hasChute=!!exit.airborne;}
   record.defenses=this.game.defenses?.snapshot(record.runtime.time);
   const keys=['pos','state','vel','blood','counters'];
   // These calls submit all five copies synchronously before yielding. A later
