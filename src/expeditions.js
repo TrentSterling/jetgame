@@ -4,15 +4,18 @@ import {height,obstacles,navigationObstacles} from './nav.js';
 import {regionsNear,expeditionOffer} from './regions.js';
 import {compositeStatic} from './composite.js';
 import {moveSurvivor} from './survivor-motion.js';
-import {survivorGeometry} from './bot-art.js';
+import {survivorGeometry,survivorRestPose} from './bot-art.js';
 
-function survivor(index){
- const geo=survivorGeometry(index),p=geo.getAttribute('position'),part=geo.getAttribute('part');
- const m=new T.Mesh(geo,new T.MeshStandardMaterial({vertexColors:true,roughness:.85}));m.rotation.y=Math.PI;m.castShadow=m.receiveShadow=true;
- m.userData.rest=Float32Array.from(p.array);m.userData.normals=Float32Array.from(geo.getAttribute('normal').array);m.userData.parts=part.array;m.userData.path={};m.userData.clock=index;
- m.userData.limbs=[];
- for(let i=0;i<part.count;){const tag=part.getX(i),start=i;while(i<part.count&&part.getX(i)===tag)i++;if(tag)m.userData.limbs.push({part:tag,start,end:i});}
- geo.boundingSphere=new T.Sphere(new T.Vector3(0,.95,0),1.6);return m;
+function survivor(index,reuse){
+ const rest=survivorRestPose(index),m=reuse?.[rest.variant].pop()||new T.Mesh(survivorGeometry(index),new T.MeshStandardMaterial({vertexColors:true,roughness:.85})),geo=m.geometry;
+ if(m.userData.rest){
+  // A departing walker may be mid-stride or hidden after boarding. Restore the
+  // entire pose before attaching it to a different site, including dirty ranges.
+  for(const [name,values] of [['position',rest.positions],['normal',rest.normals]]){const a=geo.getAttribute(name);a.array.set(values);a.clearUpdateRanges();a.needsUpdate=true;}
+ }else geo.boundingSphere=new T.Sphere(new T.Vector3(0,.95,0),1.6);
+ m.position.set(0,0,0);m.rotation.set(0,Math.PI,0,'XYZ');m.scale.set(1,1,1);m.visible=true;m.castShadow=m.receiveShadow=true;m.matrixAutoUpdate=m.matrixWorldAutoUpdate=true;
+ m.userData={rest:rest.positions,normals:rest.normals,parts:geo.getAttribute('part').array,limbs:rest.limbs,variant:rest.variant,path:{},clock:index,walking:false};
+ m.updateMatrix();return m;
 }
 function poseSurvivor(mesh,walking,dt){
  const data=mesh.userData;if(!walking&&!data.walking)return;data.clock+=dt*8;data.walking=walking;
@@ -38,10 +41,18 @@ export class Expeditions{
  updateSites(pos){
   const key=`${Math.round(pos.x/900)},${Math.round(pos.z/900)}`;if(key===this.lastRegion)return;this.lastRegion=key;
   const nearby=regionsNear(pos.x,pos.z),wanted=new Set(nearby.map(s=>s.id));
-  for(const [id,site] of this.sites)if(!wanted.has(id)&&this.party?.id!==id){this.scene.remove(site.group);const materials=new Set();site.group.traverse(o=>{if(o.isMesh){o.geometry.dispose();materials.add(o.material);}});for(const m of materials)m.dispose();for(const b of site.boxes){for(const list of [obstacles,navigationObstacles]){const i=list.indexOf(b);if(i>=0)list.splice(i,1);}}for(const m of site.solids){const i=this.solids.indexOf(m);if(i>=0)this.solids.splice(i,1);}this.sites.delete(id);}
-  for(const spec of nearby)if(!this.sites.has(spec.id))this.sites.set(spec.id,this.build(spec));
+  // Reuse is bounded to this transition. Pinned party sites never enter the
+  // pool, and unused meshes are disposed before updateSites returns.
+  const reuse=[[],[]];
+  try{
+   for(const [id,site] of this.sites)if(!wanted.has(id)&&this.party?.id!==id){
+    for(const m of site.people){site.group.remove(m);reuse[m.userData.variant].push(m);}
+    this.scene.remove(site.group);const materials=new Set();site.group.traverse(o=>{if(o.isMesh){o.geometry.dispose();materials.add(o.material);}});for(const m of materials)m.dispose();for(const b of site.boxes){for(const list of [obstacles,navigationObstacles]){const i=list.indexOf(b);if(i>=0)list.splice(i,1);}}for(const m of site.solids){const i=this.solids.indexOf(m);if(i>=0)this.solids.splice(i,1);}this.sites.delete(id);
+   }
+   for(const spec of nearby)if(!this.sites.has(spec.id))this.sites.set(spec.id,this.build(spec,reuse));
+  }finally{for(const bucket of reuse)for(const m of bucket){m.geometry.dispose();m.material.dispose();}}
  }
- build(spec){
+ build(spec,reuse){
   const savedState=this.missions.get(spec.id),group=new T.Group(),site={...spec,group,boxes:[],solids:[],people:[],count:savedState?.people.length??expeditionOffer(spec).people,reward:expeditionOffer(spec).reward};group.position.set(spec.x,height(spec.x,spec.z),spec.z);this.scene.add(group);site.ready=this.repaired.has(site.id);
   const steel=material('#374b4a',.35),roof=material('#71614b'),stone=material('#9e6241'),paint=material('#d0c4a3');
   const building=(x,z,w,d,h,m=roof)=>{const b={x:spec.x+x,z:spec.z+z,w,d,h};obstacles.push(b);navigationObstacles.push(b);site.boxes.push(b);const mesh=box(group,[w,h,d],[x,h/2,z],m);site.solids.push(mesh);this.solids.push(mesh);box(group,[w+.7,.3,d+.7],[x,h+.15,z],steel);box(group,[w*.45,h*.65,.12],[x,h*.33,z+d/2+.07],steel);};
@@ -64,7 +75,7 @@ export class Expeditions{
   }
   const beacon=new T.Mesh(new T.CylinderGeometry(.2,.2,12,8),new T.MeshBasicMaterial({color:'#eebd64',transparent:true,opacity:.65,depthWrite:false}));beacon.position.set(0,6,3);group.add(beacon);site.beacon=beacon;
   site.radio=box(group,[1.1,1.4,.8],[0,.7,3],steel);segment(group,[0,1.4,3],[0,3.8,3],.025,paint);
-  if(spec.kind!=='home')for(let i=0;i<site.count;i++){const m=survivor(i);m.position.set(-4+i*2,0,-1);group.add(m);site.people[i]=m;}
+  if(spec.kind!=='home')for(let i=0;i<site.count;i++){const m=survivor(i,reuse);m.position.set(-4+i*2,0,-1);group.add(m);site.people[i]=m;}
   if(spec.kind==='quarry'){
    const kit=new T.Group();kit.position.set(10,.45,13);group.add(kit);site.kit=kit;
    box(kit,[1.25,.8,.9],[0,0,0],paint);const red=material('#bd5540');box(kit,[.7,.05,.2],[0,.42,0],red);box(kit,[.2,.05,.65],[0,.43,0],red);

@@ -158,12 +158,20 @@ export function poseFootBot(root,{walking=false,dt=0,aimPitch=0,firing=false}=ID
 // A single opaque draw for evacuees. Limb tags retain the existing walking rig;
 // detailed living faces never enter the 12,000-instance zombie geometry.
 const survivorTemplates=[];
-export function survivorGeometry(index=0){
+function survivorTemplate(index){
  const variant=Math.abs(Math.trunc(safe(index)))%2;
- // Templates never leave this module. Every evacuee owns mutable pose buffers;
- // streaming reuses construction without sharing positions or disposal state.
- return (survivorTemplates[variant]??=buildSurvivorGeometry(variant)).clone();
+ if(!survivorTemplates[variant]){
+  const geometry=buildSurvivorGeometry(variant),part=geometry.getAttribute('part'),limbs=[];
+  for(let i=0;i<part.count;){const tag=part.getX(i),start=i;while(i<part.count&&part.getX(i)===tag)i++;if(tag)limbs.push(Object.freeze({part:tag,start,end:i}));}
+  const rest=Object.freeze({variant,positions:geometry.getAttribute('position').array,normals:geometry.getAttribute('normal').array,limbs:Object.freeze(limbs)});
+  survivorTemplates[variant]={geometry,rest};
+ }
+ return survivorTemplates[variant];
 }
+// Rest arrays are read-only CPU inputs shared by a variant. Never attach them
+// to a mesh attribute or mutate them; every geometry clone owns all GPU buffers.
+export const survivorRestPose=(index=0)=>survivorTemplate(index).rest;
+export const survivorGeometry=(index=0)=>survivorTemplate(index).geometry.clone();
 function buildSurvivorGeometry(index=0){
  const jacket=index%2?'#748e87':'#b9904f',shade=index%2?'#4a6464':'#756b46',skin=index%2?'#ac7958':'#c6a17f',trousers='#3b5054';
  const pieces=[],body=new PaintedPart();
