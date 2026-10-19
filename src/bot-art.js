@@ -1,5 +1,6 @@
 import * as T from 'three/webgpu';
 import {buggy} from './art.js';
+import {characterFace,characterLoft,faceFront} from './character-shapes.js';
 
 // A deliberately small rig: five opaque draws per ally and one short-lived
 // muzzle flash. Flat, painted geometry keeps these living people distinct from
@@ -45,21 +46,20 @@ const paintedMaterial=()=>new T.MeshStandardMaterial({color:'#ffffff',vertexColo
 function group(parent,name,x=0,y=0,z=0){const g=new T.Group();g.name=name;g.position.set(x,y,z);parent.add(g);return g;}
 
 function humanFace(part,{skin,shade,hair},y=0,helmet=false){
- // Warm cheeks, intact jaw, ears, nose, closed mouth and small bright eyes.
- part.ball([.145,.19,.13],[0,y+.065,.005],skin);
- part.box([.20,.11,.11],[0,y-.035,-.065],skin);
- part.box([.052,.065,.055],[0,y+.045,-.135],skin);
- for(const s of [-1,1]){
-  part.box([.031,.068,.042],[s*.147,y+.046,0],shade);
-  part.box([.057,.024,.014],[s*.058,y+.097,-.117],'#e6ddc9');
-  part.box([.020,.023,.017],[s*.052,y+.097,-.125],'#292925');
-  part.box([.065,.018,.017],[s*.058,y+.122,-.115],hair,[0,0,s*.04]);
+ // Connected cheek, nose, mouth and jaw surface adapted from the user's miner.
+ part.add(characterFace(),[0,y+.055,0],skin,undefined,[.92,1.18,.95]);
+ for(const side of [-1,1]){
+  const x=side*.060,eyeZ=faceFront(x/.92,.035)*.95;
+  part.ball([.020,.045,.028],[side*.155,y+.063,.003],skin);
+  part.ball([.010,.027,.018],[side*.166,y+.063,-.010],shade);
+  part.ball([.027,.010,.007],[x,y+.096,eyeZ-.003],'#c9bda4');
+  part.ball([.007,.008,.007],[x,y+.096,eyeZ-.009],'#302e26');
+  part.rod([x-.026,y+.106,eyeZ-.003],[x+.026,y+.107,eyeZ-.003],.004,shade);
+  part.rod([x-side*.030,y+.120,eyeZ-.002],[x+side*.028,y+.117,eyeZ-.001],.005,hair);
  }
- part.box([.077,.013,.012],[0,y-.003,-.126],shade);
  if(!helmet){
-  part.ball([.151,.09,.136],[0,y+.19,.018],hair);
-  part.box([.028,.09,.075],[-.136,y+.113,.016],hair);
-  part.box([.028,.07,.075],[.136,y+.123,.016],hair);
+  part.add(new T.SphereGeometry(1,16,6,0,TAU,0,Math.PI*.49),[0,y+.12,.012],hair,undefined,[.153,.145,.136]);
+  for(const side of [-1,1])part.box([.024,.08,.075],[side*.141,y+.121,.018],hair);
  }
 }
 
@@ -69,9 +69,8 @@ export function createFootBot(index=0){
  const palette=variant?{jacket:'#536a70',shade:'#3a484e',trousers:'#5c5145',skin:'#a66e4c',skinShade:'#734b37',hair:'#292c29',band:'#d6b067'}:{jacket:'#787b59',shade:'#4d5847',trousers:'#3c4948',skin:'#c49a76',skinShade:'#8d6551',hair:'#4a372b',band:'#c97944'};
  const upper=group(root,'Breathing torso',0,1.29,0),head=group(upper,'Living human face',0,.34,-.008),arms=group(upper,'Aimed rifle and hands',0,.055,-.035),legs=[];
  const torso=new PaintedPart();
- torso.box([.36,.20,.26],[0,-.40,.025],palette.trousers);
- torso.box([.39,.38,.28],[0,-.14,.025],palette.jacket);
- torso.box([.51,.17,.29],[0,.095,.025],palette.jacket);
+ torso.add(characterLoft([[-.50,.16,.105,.025],[-.40,.19,.13,.025],[-.30,.18,.125,.025]],12),[0,0,0],palette.trousers);
+ torso.add(characterLoft([[-.32,.196,.143,.025],[-.20,.182,.137,.025],[-.08,.20,.151,.025],[.07,.249,.152,.025],[.15,.225,.135,.025],[.20,.10,.095,.005]],12),[0,0,0],palette.jacket);
  torso.box([.34,.045,.29],[0,-.30,.015],'#353c34');
  torso.box([.065,.048,.018],[0,-.30,-.14],'#b0a78b');
  torso.box([.035,.39,.017],[0,-.09,-.123],palette.shade);
@@ -80,7 +79,13 @@ export function createFootBot(index=0){
   torso.box([.12,.027,.04],[s*.13,.069,-.151],palette.jacket);
   torso.box([.062,.16,.045],[s*.153,-.25,-.15],'#625b43');
  }
- torso.box([.21,.085,.23],[0,.20,-.004],palette.band,[.08,0,0]);
+ torso.add(characterLoft([[.15,.105,.09],[.19,.098,.087],[.21,.083,.08]],12),[0,0,0],palette.band);
+ for(const side of [-1,1]){
+  torso.box([.09,.095,.015],[side*.072,.14,-.10],palette.jacket,[.18,0,side*.45]);
+  torso.rod([side*.10,-.17,-.134],[side*.17,-.13,-.136],.006,palette.shade);
+  torso.rod([side*.09,-.23,-.134],[side*.16,-.21,-.137],.004,palette.shade);
+ }
+ for(const y of [-.22,-.1,.02])torso.ball([.008,.009,.005],[0,y,-.143],'#b1ab91');
  torso.box([.08,.19,.04],[-.084,.09,-.163],palette.band,[0,0,-.12]);
  // Patch repairs, shoulder strap and a compact worn pack remain real geometry.
  torso.box([.047,.42,.025],[.145,-.055,-.145],'#aa9c75',[0,0,.14]);
@@ -93,16 +98,19 @@ export function createFootBot(index=0){
   face.ball([.07,.10,.07],[0,.15,.145],palette.hair);
   face.box([.09,.025,.04],[0,.15,.18],palette.band);
  }else{
-  face.box([.26,.055,.24],[0,.204,.005],palette.shade);
-  face.box([.28,.022,.13],[0,.179,-.12],palette.shade);
+  face.add(new T.SphereGeometry(1,16,6,0,TAU,0,Math.PI*.50),[0,.17,.01],palette.shade,undefined,[.16,.10,.15]);
+  face.ball([.16,.014,.085],[0,.175,-.13],palette.shade);
  }
  face.mesh(head,material,'Warm face, eyes and hair');
  const held=new PaintedPart();
  for(const s of [-1,1]){
   const elbow=[s*.32,-.18,-.12],hand=s<0?[.055,-.10,-.61]:[.10,-.12,-.29];
   held.rod([s*.245,.005,.035],elbow,.09,palette.jacket,.104);
+  held.ball([.107,.10,.102],[s*.245,-.012,.025],palette.jacket);
   held.rod(elbow,hand,.062,palette.jacket,.075);
-  held.ball([.052,.055,.07],hand,palette.skin);
+  held.ball([.045,.049,.06],hand,'#655a43');
+  for(let finger=0;finger<3;finger++)held.rod([hand[0]-.032+finger*.025,hand[1]+.025,hand[2]-.044],[hand[0]-.035+finger*.025,hand[1]-.023,hand[2]-.050],.012,'#8b7c59');
+  held.rod([hand[0]-.04,hand[1]+.025,hand[2]],[hand[0]-.05,hand[1],hand[2]-.04],.016,'#8b7c59');
   held.rod([s*.245,-.015,.03],[s*.28,-.085,-.025],.107,palette.band,.106);
  }
  const steel='#47534e',dark='#252c2b',edge='#93917c',wood=variant?'#655744':'#8a6444';
@@ -121,8 +129,8 @@ export function createFootBot(index=0){
  held.mesh(arms,material,'Sleeves, gripping hands and carbine');
  for(const s of [-1,1]){
   const leg=group(root,s<0?'Left stride':'Right stride',s*.12,.83,.02),shape=new PaintedPart();legs.push(leg);
-  shape.rod([0,.02,0],[s*.015,-.37,-.025],.095,palette.trousers,.112);
-  shape.rod([s*.015,-.37,-.025],[s*.018,-.68,.005],.066,palette.trousers,.080);
+  shape.add(characterLoft([[-.70,.062,.071,.005,s*.018],[-.54,.071,.076,.005,s*.018],[-.39,.083,.082,-.025,s*.015],[-.31,.09,.095,-.022,s*.014],[-.14,.105,.111,.003,s*.008],[.025,.113,.12,0]],10),[0,0,0],palette.trousers);
+  for(const y of [-.34,-.43])shape.rod([-.064,y,-.08],[.052,y+.02,-.08],.004,palette.shade);
   shape.box([.15,.12,.055],[s*.015,-.39,-.078],palette.shade);
   shape.box([.17,.14,.29],[s*.018,-.76,-.058],'#2b3230');
   shape.box([.18,.032,.30],[s*.018,-.814,-.061],'#202725');
@@ -145,6 +153,46 @@ export function poseFootBot(root,{walking=false,dt=0,aimPitch=0,firing=false}=ID
  u.head.rotation.x=pitch*.38;u.arms.rotation.x=pitch;
  u.arms.position.z=-.035+m.recoil;u.flash.visible=!!firing;
  return root;
+}
+
+// A single opaque draw for evacuees. Limb tags retain the existing walking rig;
+// detailed living faces never enter the 12,000-instance zombie geometry.
+const survivorTemplates=[];
+export function survivorGeometry(index=0){
+ const variant=Math.abs(Math.trunc(safe(index)))%2;
+ // Templates never leave this module. Every evacuee owns mutable pose buffers;
+ // streaming reuses construction without sharing positions or disposal state.
+ return (survivorTemplates[variant]??=buildSurvivorGeometry(variant)).clone();
+}
+function buildSurvivorGeometry(index=0){
+ const jacket=index%2?'#748e87':'#b9904f',shade=index%2?'#4a6464':'#756b46',skin=index%2?'#ac7958':'#c6a17f',trousers='#3b5054';
+ const pieces=[],body=new PaintedPart();
+ body.add(characterLoft([[.79,.17,.12],[.91,.195,.135],[1.08,.18,.13],[1.29,.235,.15],[1.42,.24,.138],[1.49,.10,.08]],12),[0,0,0],jacket);
+ body.rod([0,1.45,0],[0,1.57,-.015],.067,skin);
+ humanFace(body,{skin,shade:'#815f48',hair:index%2?'#342f29':'#594432'},1.65);
+ body.box([.32,.035,.28],[0,.88,.005],'#454c3c');body.box([.047,.042,.025],[0,.88,-.145],'#b4a782');
+ body.box([.027,.44,.02],[0,1.19,-.145],shade);
+ for(const side of [-1,1]){
+  body.box([.115,.13,.024],[side*.125,1.27,-.139],shade);body.box([.12,.027,.033],[side*.125,1.33,-.156],jacket);
+  body.rod([side*.17,1.42,-.09],[side*.13,.96,-.139],.014,'#a79a77');
+  body.box([.075,.13,.06],[side*.17,.93,-.13],shade);
+ }
+ body.box([.25,.28,.12],[0,1.19,.18],shade);pieces.push([body,0]);
+ for(const side of [-1,1]){
+  const arm=new PaintedPart(),leg=new PaintedPart(),x=side*.29;
+  arm.rod([x,1.39,.02],[side*.34,1.13,-.02],.078,jacket,.10);
+  arm.ball([.10,.085,.10],[x,1.38,.02],jacket);
+  arm.rod([side*.34,1.13,-.02],[side*.34,.93,-.08],.052,jacket,.071);
+  arm.ball([.046,.071,.04],[side*.34,.89,-.09],skin);
+  for(let i=0;i<3;i++)arm.rod([side*.34-.02+i*.018,.88,-.12],[side*.34-.02+i*.018,.84,-.12],.009,skin);
+  leg.add(characterLoft([[.12,.063,.071,.018,side*.13],[.38,.077,.08,-.025,side*.14],[.55,.093,.10,-.02,side*.13],[.84,.11,.115,.015,side*.12]],10),[0,0,0],trousers);
+  leg.box([.13,.13,.035],[side*.14,.45,-.10],shade);
+  leg.box([.165,.13,.28],[side*.13,.09,-.045],'#29332e');leg.box([.173,.03,.286],[side*.13,.025,-.047],'#1f2824');
+  pieces.push([arm,side<0?1:2],[leg,side<0?3:4]);
+ }
+ const data={position:[],normal:[],color:[],part:[]};
+ for(const [p,tag] of pieces){data.position.push(...p.positions);data.normal.push(...p.normals);data.color.push(...p.colors);data.part.push(...Array(p.positions.length/3).fill(tag));}
+ const geometry=new T.BufferGeometry();for(const [key,value] of Object.entries(data))geometry.setAttribute(key,new T.Float32BufferAttribute(value,key==='part'?1:3));geometry.computeBoundingSphere();return geometry;
 }
 
 // Repaint and merge a rigid assembly, retaining original hidden pieces for the
@@ -220,11 +268,34 @@ export function createBotVehicle(kind='rammer'){
  for(const s of [-1,1])for(let i=0;i<3;i++)extra.box([.06,.022,.16],[s*(.44+i*.10),1.354-i*.018,-1.46+i*.12],bone,[.12,s*.20,0]);
  extra.mesh(mesh,material,'Role-specific armor and salvage');
  u.driver.visible=true;
- const face=new PaintedPart();humanFace(face,{skin:kind==='escort'?'#a56f51':'#bf9470',shade:'#805a43',hair:'#3c332b'},0,true);
- // The old helmet remains the helmet, but the opaque visor is hidden. This
- // forward face insert gives every moving vehicle a plainly living driver.
- for(const child of u.head.children)if(child.geometry?.type==='BoxGeometry')child.visible=false;
- const faceGroup=group(u.head,'Exposed driver face',0,-.065,-.134);face.mesh(faceGroup,material,'Driver cheeks, nose and eyes');
+ for(const child of u.driver.children)if(child!==u.head)child.visible=false;
+ for(const child of u.head.children)child.visible=false;
+ const suit=new PaintedPart(),coat=kind==='escort'?'#77715b':'#536970',cloth='#35484c',skin=kind==='escort'?'#a56f51':'#bf9470';
+ suit.add(characterLoft([[.02,.17,.14,.025],[.13,.18,.14,.015],[.34,.20,.15,0],[.53,.248,.145,-.02],[.64,.09,.08,-.015]],12),[0,0,0],coat);
+ suit.rod([0,.62,-.02],[0,.76,-.02],.07,skin);
+ suit.box([.05,.46,.02],[0,.32,-.151],cloth);
+ for(const side of [-1,1]){
+  suit.rod([side*.14,.04,.015],[side*.16,-.07,-.38],.113,cloth,.13);
+  suit.rod([side*.16,-.07,-.38],[side*.16,-.35,-.65],.075,cloth,.098);
+  suit.ball([.105,.075,.115],[side*.16,-.065,-.40],coat);
+  suit.box([.17,.14,.29],[side*.16,-.39,-.71],'#30352e');
+  suit.box([.18,.035,.30],[side*.16,-.46,-.72],'#1f2725');
+  suit.rod([side*.23,.53,-.015],[side*.29,.27,-.30],.08,coat,.10);
+  suit.ball([.104,.096,.104],[side*.23,.52,-.015],coat);
+  suit.rod([side*.29,.27,-.30],[side*.19,.44,-.58],.055,coat,.075);
+  suit.ball([.055,.050,.052],[side*.19,.44,-.58],'#5a5543');
+  for(let finger=0;finger<4;finger++)suit.rod([side*(.174+finger*.012),.476,-.595],[side*(.174+finger*.012),.425,-.605],.009,'#8b7e60');
+  suit.rod([side*.15,.46,-.57],[side*.18,.43,-.55],.014,'#8b7e60');
+  suit.box([.11,.12,.027],[side*.12,.43,-.15],cloth);suit.box([.12,.025,.03],[side*.12,.49,-.165],coat);
+  suit.rod([side*.14,.61,-.105],[side*.10,.10,-.153],.022,'#b8a47a');
+  suit.box([.052,.052,.028],[side*.11,.19,-.177],steel);
+ }
+ suit.mesh(u.driver,material,'Seated jacket, knees, harness and wheel grips');
+ const face=new PaintedPart();humanFace(face,{skin,shade:'#805a43',hair:'#3c332b'},0,true);
+ face.add(new T.SphereGeometry(1,16,8,0,TAU,0,Math.PI*.48),[0,.125,.012],kind==='escort'?'#9d9e84':'#c69c4c',undefined,[.183,.145,.164]);
+ face.box([.35,.025,.23],[0,.13,-.055],bone);
+ face.rod([-.155,.12,-.015],[-.127,-.065,-.09],.009,dark);face.rod([.155,.12,-.015],[.127,-.065,-.09],.009,dark);
+ face.mesh(u.head,material,'Connected driver face, fitted helmet and chin straps');
  u.steering=mesh.children.find(o=>o.geometry?.type==='TorusGeometry');
  for(const flame of u.boost)flame.visible=false;
  batchPainted(u.head,material);batchPainted(u.driver,material,new Set([u.head]));

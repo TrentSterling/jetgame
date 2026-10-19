@@ -1,26 +1,32 @@
 import * as T from 'three/webgpu';
-import {box,cylinder,segment,material,humanoid} from './art.js';
+import {box,cylinder,segment,material} from './art.js';
 import {height,obstacles,navigationObstacles} from './nav.js';
 import {regionsNear,expeditionOffer} from './regions.js';
 import {compositeStatic} from './composite.js';
 import {moveSurvivor} from './survivor-motion.js';
+import {survivorGeometry} from './bot-art.js';
 
 function survivor(index){
- const source=humanoid(),geo=new T.BufferGeometry();for(const key of ['position','normal','color'])geo.setAttribute(key,source.getAttribute(key));source.dispose();
- const p=geo.getAttribute('position'),colors=geo.getAttribute('color'),part=source.getAttribute('part');
- const skin=new T.Color('#c6a17f'),jacket=new T.Color(index%2?'#748e87':'#c8954d'),trousers=new T.Color('#3b5054'),boots=new T.Color('#243334');
- for(let i=0;i<p.count;i++){const y=p.getY(i),hand=part.getX(i)>0&&part.getX(i)<3&&y<.96;const c=y>1.5||hand?skin:y>.9?jacket:y>.18?trousers:boots;colors.setXYZ(i,c.r,c.g,c.b);}
+ const geo=survivorGeometry(index),p=geo.getAttribute('position'),part=geo.getAttribute('part');
  const m=new T.Mesh(geo,new T.MeshStandardMaterial({vertexColors:true,roughness:.85}));m.rotation.y=Math.PI;m.castShadow=m.receiveShadow=true;
  m.userData.rest=Float32Array.from(p.array);m.userData.normals=Float32Array.from(geo.getAttribute('normal').array);m.userData.parts=part.array;m.userData.path={};m.userData.clock=index;
+ m.userData.limbs=[];
+ for(let i=0;i<part.count;){const tag=part.getX(i),start=i;while(i<part.count&&part.getX(i)===tag)i++;if(tag)m.userData.limbs.push({part:tag,start,end:i});}
  geo.boundingSphere=new T.Sphere(new T.Vector3(0,.95,0),1.6);return m;
 }
 function poseSurvivor(mesh,walking,dt){
  const data=mesh.userData;if(!walking&&!data.walking)return;data.clock+=dt*8;data.walking=walking;
  const p=mesh.geometry.getAttribute('position'),n=mesh.geometry.getAttribute('normal');
- for(let i=0;i<p.count;i++){
-  const part=data.parts[i],j=i*3,angle=walking&&part?Math.sin(data.clock+(part===1||part===4?0:Math.PI))*(part<3?.3:.45):0,c=Math.cos(angle),s=Math.sin(angle),pivot=part<3?1.4:.82;
-  p.setXYZ(i,data.rest[j],pivot+(data.rest[j+1]-pivot)*c-data.rest[j+2]*s,(data.rest[j+1]-pivot)*s+data.rest[j+2]*c);
-  n.setXYZ(i,data.normals[j],data.normals[j+1]*c-data.normals[j+2]*s,data.normals[j+1]*s+data.normals[j+2]*c);
+ // Head and torso are static. Only limb components become dirty; compute each
+ // joint rotation once and let Three upload the explicit moving ranges.
+ p.clearUpdateRanges();n.clearUpdateRanges();
+ for(const {part,start,end} of data.limbs){
+  const angle=walking?Math.sin(data.clock+(part===1||part===4?0:Math.PI))*(part<3?.3:.45):0,c=Math.cos(angle),s=Math.sin(angle),pivot=part<3?1.4:.82;
+  for(let i=start;i<end;i++){const j=i*3;
+   p.setXYZ(i,data.rest[j],pivot+(data.rest[j+1]-pivot)*c-data.rest[j+2]*s,(data.rest[j+1]-pivot)*s+data.rest[j+2]*c);
+   n.setXYZ(i,data.normals[j],data.normals[j+1]*c-data.normals[j+2]*s,data.normals[j+1]*s+data.normals[j+2]*c);
+  }
+  p.addUpdateRange(start*3,(end-start)*3);n.addUpdateRange(start*3,(end-start)*3);
  }
  p.needsUpdate=n.needsUpdate=true;
 }

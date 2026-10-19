@@ -47,4 +47,11 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” 
 
 Terrain Lab noise and Froxel intersection adaptation: Copyright (c) 2026 Trent Sterling, MIT.
 
+Character face/loft construction adapted from BUTTLOADS 2 miner-art.js:
+Copyright (c) 2026 Trent Sterling, MIT. Source commit a28fa21085ddcf30e9d7f77cec74fd99e3657b2b.
+Source repository: https://github.com/TrentSterling/buttloads2
+Source file: https://github.com/TrentSterling/buttloads2/blob/a28fa21085ddcf30e9d7f77cec74fd99e3657b2b/src/miner-art.js
+Source license: https://github.com/TrentSterling/buttloads2/blob/a28fa21085ddcf30e9d7f77cec74fd99e3657b2b/LICENSE
+The MIT permission and warranty notice above also applies to this adaptation.
+
 references/zombillionaire/ promotional media is excluded from this MIT license.

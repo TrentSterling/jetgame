@@ -26,10 +26,23 @@ export function humanoid(){
   for(let i=1;i<n-1;i++){faceColor=typeof color==='function'?color(0,2):color;face(rr[0][0],rr[0][i],rr[0][i+1]);const r=rr.at(-1);faceColor=typeof color==='function'?color(rr.length-2,2):color;face(r[0],r[i+1],r[i]);}
  }
  // Ragged jacket hem, narrow waist, broad sloping shoulders and a forward neck.
- loft([[0,.82,.025,.19,.135],[.015,1.03,.015,.17,.12],[-.018,1.37,.055,.29,.16],[0,1.48,.045,.17,.13]],(j,i)=>j===0&&i===0?'#514c3e':shirt);
+ loft([[0,.82,.025,.19,.135],[.015,1.03,.015,.17,.12],[-.018,1.37,.055,.29,.16],[0,1.48,.045,.17,.13]],(j,i)=>j===0&&i===0?'#514c3e':i===4?'#605f4e':shirt,0,true);
+ // Fitted collar, broken lower hem, pocket flap and belt remain in one mesh.
+ quad([-.14,1.44,-.102],[-.045,1.47,-.11],[-.025,1.32,-.14],[-.08,1.37,-.14],'#8b8060');
+ quad([.04,1.46,-.11],[.14,1.43,-.102],[.08,1.34,-.14],[.025,1.32,-.14],'#504f40');
+ quad([.085,1.31,-.126],[.207,1.30,-.113],[.20,1.265,-.118],[.09,1.27,-.131],'#4e4d3e');
+ quad([-.17,.97,-.116],[.16,.97,-.116],[.16,.943,-.125],[-.17,.943,-.125],'#353a31');
+ tri([-.18,.86,-.12],[-.10,.82,-.13],[-.15,.77,-.13],'#605a45');
  loft([[0,1.43,-.025,.085,.08],[0,1.59,-.09,.075,.075]],shadow);
  // Cheekbones and jaw give a human profile; the lower face projects toward the player.
- loft([[.035,1.53,-.15,.09,.11],[0,1.72,-.105,.174,.145],[-.012,1.87,-.07,.14,.12]],(j,i)=>i===0?skin:i===4?shadow:'#838d70',0,true);
+ loft([[.035,1.53,-.15,.09,.11],[.014,1.60,-.125,.125,.13],[0,1.72,-.105,.174,.145],[-.009,1.81,-.075,.162,.133],[-.012,1.89,-.065,.105,.105]],(j,i)=>j===3?(i===0?'#61664e':'#454e3d'):i===0?skin:i===4?shadow:'#838d70',0,true);
+ for(const side of [-1,1]){
+  const x=side*.166;
+  tri([x,1.75,-.06],[x+side*.035,1.71,-.075],[x,1.65,-.08],shadow);
+  tri([x,1.75,-.06],[x,1.65,-.08],[x+side*.035,1.71,-.075],skin);
+  const brow=[[side*.035,1.752,-.25],[side*.125,1.76,-.244],[side*.132,1.741,-.252],[side*.036,1.735,-.26]];
+  quad(...(side<0?brow.reverse():brow),'#535b47');
+ }
  // Dark orbital cavities, small cloudy eyes, nose ridge and an uneven open mouth.
  for(const side of [-1,1]){
   const x=side*.083;
@@ -50,11 +63,11 @@ export function humanoid(){
  for(const side of [-1,1]){
   const arm=side<0?1:2,leg=side<0?3:4,x=side*.32;
   // Bent elbows and mismatched torn sleeves, still driven by the same shoulder tags.
-  loft([[x*.9,1.40,.015,.095,.10],[x*1.13,1.12,-.045,.075,.075],[x*1.08,.89,-.18,.052,.055]],(j)=>j===0?(side<0?shirt:'#595f4c'):skin,arm);
+  loft([[x*.9,1.40,.015,.095,.10],[x*1.10,1.20,-.025,.082,.084],[x*1.13,1.12,-.045,.075,.075],[x*1.08,.89,-.18,.052,.055]],(j)=>j<2?(side<0?shirt:'#595f4c'):skin,arm);
   loft([[x*1.08,.92,-.18,.038,.04],[x*1.07,.81,-.235,.061,.048],[x*1.03,.735,-.275,.044,.035]],(j,i)=>i===0?skin:shadow,arm);
   // Knees and offset ankles break the straight-tube silhouette without extra joints.
-  loft([[side*.13,.86,.025,.115,.12],[side*.145,.45,-.035,.08,.085],[side*.15,.13,.025,.065,.07]],(j,i)=>j===0&&i===0?'#535e52':cloth,leg);
-  loft([[side*.15,.025,-.07,.095,.16],[side*.15,.16,-.035,.085,.13]],boot,leg);
+  loft([[side*.13,.86,.025,.115,.12],[side*.14,.57,-.027,.098,.099],[side*.145,.45,-.035,.08,.085],[side*.15,.13,.025,.065,.07]],(j,i)=>j===0&&i===0?'#535e52':j===1&&i===0?'#6f6e55':cloth,leg);
+  loft([[side*.15,.025,-.07,.095,.16],[side*.15,.16,-.035,.085,.13]],boot,leg,true);
  }
  const g=new T.InstancedBufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pp,3));g.setAttribute('normal',new T.Float32BufferAttribute(nn,3));g.setAttribute('color',new T.Float32BufferAttribute(cc,3));g.setAttribute('part',new T.Float32BufferAttribute(tags,1));return g;
 }
