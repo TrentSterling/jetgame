@@ -25,7 +25,7 @@ const outsideView=wgslFn(`fn outsideCrowdView(p:vec3f,view:mat4x4f)->bool{
 
 export function createKernels(h) {
   const {pos, old, vel, state, blood, density, flow, counters, dt, time,
-    defenseOrigins, defenseRays, defenseIds, viewProjection, viewEnabled, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
+    defenseOrigins, defenseRays, defenseIds, botOrigins, botRays, botIds, botCars, botCarsOld, viewProjection, viewEnabled, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
 
   const cellIndex=p=>cell(p.sub(fieldOrigin));
   const inside=p=>abs(p.x.sub(fieldOrigin.x)).lessThan(188).and(abs(p.y.sub(fieldOrigin.y)).lessThan(188));
@@ -146,6 +146,28 @@ export function createKernels(h) {
       s.z.assign(time.add(.15));
     });
 
+    // Allied shots are target-specific and cannot affect friendly CPU actors.
+    for(let i=0;i<2;i++){
+      const origin=botOrigins.element(i),aim=botRays.element(i),targetId=i===0?botIds.x:botIds.y;
+      If(origin.w.greaterThan(0).and(float(id).equal(targetId)),()=>{
+        const along=dot(center.sub(origin.xyz),aim.xyz),nearest=origin.xyz.add(aim.xyz.mul(clamp(along,0,aim.w)));
+        If(along.greaterThan(0).and(along.lessThan(aim.w)).and(length(center.sub(nearest).mul(vec3(1,.48,1))).lessThan(bodyScale.mul(.48))),()=>{
+          If(damage.lessThanEqual(0),()=>{cause.assign(uint(8));});
+          damage.addAssign(origin.w);impulse.addAssign(aim.xyz.mul(5).add(vec3(0,1,0)));s.z.assign(time.add(.09));
+        });
+      });
+    }
+    // Three independent swept car bodies; no player contact/damage counters.
+    for(let i=0;i<3;i++){
+      const body=botCars.element(i),before=botCarsOld.element(i),travel=body.xyz.sub(before.xyz).toVar();
+      const t=clamp(dot(center.sub(before.xyz),travel).div(max(dot(travel,travel),.001)),0,1);
+      const point=before.xyz.add(travel.mul(t)).toVar();
+      If(body.w.greaterThan(3).and(length(center.sub(point).mul(vec3(1,.4,1))).lessThan(2)).and(abs(center.y.sub(point.y)).lessThan(3)),()=>{
+        If(damage.lessThanEqual(0),()=>{cause.assign(uint(9));});
+        damage.addAssign(max(35,body.w.mul(8)));impulse.addAssign(normalize(travel.add(vec3(.001,0,0))).mul(body.w.mul(.75)).add(vec3(0,5,0)));s.z.assign(time.add(.1));
+      });
+    }
+
     // Both physical vehicles remain lethal, independently of the occupied seat.
     for(const [body,before,skim,contactCounter,killCause] of [[car,carOld,0,4,2],[jet,jetOld,1,8,4]]){
       const travel=body.xyz.sub(before.xyz).toVar();
@@ -166,11 +188,13 @@ export function createKernels(h) {
     s.x.subAssign(damage);
     If(s.x.lessThanEqual(0), () => {
       atomicAdd(counters.element(0), uint(1));
-      If(cause.notEqual(7),()=>{atomicAdd(counters.element(6), uint(float(1).add(heavy.mul(3))));});
+      If(cause.lessThan(7),()=>{atomicAdd(counters.element(6), uint(float(1).add(heavy.mul(3))));});
       If(cause.equal(2), () => { atomicAdd(counters.element(2), uint(1)); });
       If(cause.equal(3), () => { atomicAdd(counters.element(3), uint(1)); });
       If(cause.equal(4), () => { atomicAdd(counters.element(7), uint(1)); });
       If(cause.equal(5), () => { atomicAdd(counters.element(12), uint(1)); });
+      If(cause.equal(8),()=>{atomicAdd(counters.element(13),uint(1));});
+      If(cause.equal(9),()=>{atomicAdd(counters.element(14),uint(1));});
       state.element(id).assign(s);
       vel.element(id).assign(vec4(impulse, 0));
       Return();
