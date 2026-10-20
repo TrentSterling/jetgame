@@ -11,7 +11,8 @@ import {weapon,buggy,jet,parachute} from './art.js';
 import {Horde} from './horde.js';
 import {Effects} from './fx.js';
 import {startupUI} from './startup.js';
-import {stepFlight,flightVector} from './flight.js';
+import {stepFlight,flightVector,flightMotion} from './flight.js';
+import {groundScrapeDamage,resetFlightDamage} from './flight-damage.js';
 import {Progression} from './progression.js';
 import {VehicleEffects} from './vehicle-fx.js';
 import {freeSpot} from './collision.js';
@@ -37,7 +38,7 @@ let carMesh=buggy(),jetMesh=jet();
 scene.add(camera,carMesh,jetMesh,canopy);camera.add(gun);gun.scale.setScalar(.62);gun.position.set(.28,-.23,-.5);gun.rotation.y=-.025;
 const gunPose=createWeaponPose(),gunShotTimes=new Float64Array(4).fill(-Infinity);
 const gunPoseState={time:0,shotTimes:gunShotTimes,reload:0,speed:0,walk:false,sprinting:false,parachute:false,shoveAnimation:0};let gunShotIndex=0;
-const upgrades=new Progression(),vehicleFX=new VehicleEffects(scene),course=new StuntCourse(scene,world.solids),drivingFX=new DrivingEffects(scene,rideHeight);
+const upgrades=new Progression(),vehicleFX=new VehicleEffects(scene,{ground:rideHeight,obstacles}),course=new StuntCourse(scene,world.solids),drivingFX=new DrivingEffects(scene,rideHeight);
 const car={pos:new T.Vector3(-7,0,59),yaw:0,speed:0,health:100,impactAt:0},plane={pos:new T.Vector3(25,1,83),yaw:0,pitch:0,flightPitch:0,roll:0,speed:0,skimming:false,health:100,impactAt:0};
 carMesh.position.copy(car.pos);jetMesh.position.copy(plane.pos);
 const player={pos:new T.Vector3(0,0,70),yaw:0,pitch:0,vy:0,health:100};resetInfantry(player);
@@ -142,8 +143,8 @@ function syncVehicles(){
 }
 function breakVehicle(which){
  const body=which==='car'?car:plane,mesh=which==='car'?carMesh:jetMesh;if(!mesh.visible)return;
- syncVehicles();const velocity=which==='car'?new T.Vector3(car.vx,car.vy,car.vz):flightDirection().multiplyScalar(plane.speed);
- vehicleFX.breakup(mesh,velocity);mesh.visible=false;body.speed=body.vx=body.vz=body.vy=0;body.boosting=false;
+ syncVehicles();const motion=which==='jet'?flightMotion(plane):null,velocity=which==='car'?new T.Vector3(car.vx,car.vy,car.vz):motion?new T.Vector3().copy(motion.velocity):flightDirection().multiplyScalar(plane.speed);
+ vehicleFX.breakup(mesh,velocity,which==='jet'?{physical:true,origin:body.pos,...motion}:undefined);mesh.visible=false;body.speed=body.vx=body.vz=body.vy=0;body.boosting=false;
  fx.explosion(body.pos,10);pendingBlasts.push(new T.Vector4(body.pos.x,body.pos.y,body.pos.z,12));
 }
 function takeDamage(amount,which=mode){
@@ -158,6 +159,7 @@ function destroy(){if(dead)return;passenger=null;dead=true;deathAt=time;respawnA
  shakes=.2;$('crosshair').hidden=true;
 }
 function respawn(){if(!dead||time<deathAt+.65)return false;
+ resetFlightDamage(plane);
  const next=respawnMode,z=deathPoint.z>=0?150:-150,yaw=z>0?0:Math.PI;
  combat.stamina=1;combat.shoveDelay=combat.recoverDelay=0;
  dead=false;shieldUntil=time+3.2;hurtUntil=0;respawns++;keys.clear();pressed.clear();mouseDown=secondaryDown=false;aimX=aimY=0;shakes=damageFade=0;reload=0;gunShotTimes.fill(-Infinity);gunShotIndex=0;ammo=upgrades.magazine;bombs=upgrades.bombCapacity;
@@ -169,6 +171,7 @@ function respawn(){if(!dead||time<deathAt+.65)return false;
  const arrival=new T.Vector3(0,height(0,z),z);fx.explosion(arrival,7);pendingBlasts.push(new T.Vector4(0,arrival.y+.5,z,11));message('BACK IN · 3 SECONDS OF ARMOR',3.2);flowAt=0;return true;
 }
 function restart(){
+ resetFlightDamage(plane);
  passenger=null;hurtUntil=0;
  keys.clear();pressed.clear();frameSamples.length=0;
  fleet.reset();carMesh=fleet.active.car.mesh;jetMesh=fleet.active.jet.mesh;expeditions.reset();
@@ -180,6 +183,7 @@ function restart(){
 }
 function saveRuntime(){return {mode,time,ammo,bombs,bombAt,rearm,shotAt,reload,dead,won,score,previousHits,previousContacts,previousCar,previousFoot,previousCab,previousJet,deathAt,respawnAt,respawnMode,shieldUntil,hurtUntil,respawns,jumps,gunRounds,bombImpacts,deathPoint:deathPoint.toArray()};}
 function restoreRuntime(s){
+ resetFlightDamage(plane);
  passenger=null;
  hurtUntil=s.hurtUntil??0;
  ({mode,time,ammo,bombs,bombAt,rearm,shotAt,reload,dead,won,score,previousHits,previousContacts,previousCar,previousFoot,previousCab,previousJet,deathAt,respawnAt,respawnMode,shieldUntil,respawns,jumps,gunRounds,bombImpacts}=s);deathPoint.fromArray(s.deathPoint);
@@ -257,8 +261,9 @@ function coastVehicles(dt){
   jetMesh.userData.jetDamage?.begin(plane);
   const flight=stepFlight(plane,dt,{throttle:0,bank:0,yaw:0,pitch:0,boost:false},rideHeight,obstacles);
   jetMesh.userData.jetDamage?.observe(plane,flight,dt,time,mode==='jet'&&(dead||time<shieldUntil));
-  if(flight.impact&&!plane.wallContact)crashDamage(plane,flight.impactSpeed);plane.wallContact=flight.impact;
+  if(flight.impact&&(!plane.wallContact||flight.impactChanged))crashDamage(plane,flight.impactChanged?flight.newImpactSpeed:flight.impactSpeed);plane.wallContact=flight.impact;
   if(flight.groundImpact>8)crashDamage(plane,flight.groundImpact*1.5);
+  takeDamage(groundScrapeDamage(plane,flight,dt,time,mode==='jet'&&(dead||time<shieldUntil)),'jet');
  }
  syncVehicles();
 }
@@ -277,8 +282,9 @@ function updateControls(dt){
   jetMesh.userData.jetDamage?.begin(plane);
   const flight=stepFlight(plane,dt,{throttle:w,bank:a,yaw:aimX,pitch:aimY,boost:jetBoost},rideHeight,obstacles);
   jetMesh.userData.jetDamage?.observe(plane,flight,dt,time,dead||time<shieldUntil);
-  if(flight.impact&&!plane.wallContact)crashDamage(plane,flight.impactSpeed);plane.wallContact=flight.impact;
+  if(flight.impact&&(!plane.wallContact||flight.impactChanged))crashDamage(plane,flight.impactChanged?flight.newImpactSpeed:flight.impactSpeed);plane.wallContact=flight.impact;
   if(flight.groundImpact>8)crashDamage(plane,flight.groundImpact*1.5);
+  takeDamage(groundScrapeDamage(plane,flight,dt,time,dead||time<shieldUntil),'jet');
   if(flight.returning)message('AIRFIELD ←',.3);
   if(plane.skimming&&plane.speed>8)fx.skid(plane.pos,plane.yaw,time);
   if(pressed.has('Space'))dropBomb();
