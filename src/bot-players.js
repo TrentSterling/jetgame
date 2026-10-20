@@ -51,6 +51,7 @@ export class BotPlayers{
    f.pos.copy(spawn(FOOT_SITES[f.index],BOT_FOOT_RADIUS));f.root.rotation.set(0,0,0);f.root.visible=true;f.target=f.goal=null;f.nextFire=time+.45+f.index*.17;f.flashUntil=0;f.shots=f.distance=f.aimPitch=0;resetBotNavigation(f.nav);poseFootBot(f.root,{walking:0,dt:0,aimPitch:0,firing:false});
   }
   for(const c of this.cars){
+   c.mesh.userData.rammerDamage?.reset();
    const position=spawn(CAR_SITES[c.index],BOT_CAR_RADIUS);resetBotDriver(c,position,0,time);c.body.health=100;c.target=null;c.old.copy(c.body.pos);c.mesh.visible=true;poseBotVehicle(c.mesh,c.body,0,this.ground);
   }
   this.clearInputs(this.horde);
@@ -141,7 +142,14 @@ export class BotPlayers{
    c.old.copy(c.body.pos);
    if((c.body.health??100)<=0||!c.mesh.visible)continue;
    const friendlies=[...external.filter(f=>f.passenger!==c),...this.foot.map(f=>({x:f.pos.x,z:f.pos.z,r:.65})),...this.cars.filter(o=>o!==c).map(o=>({x:o.body.pos.x,z:o.body.pos.z,r:2.35}))];
+   const damage=c.mesh.userData.rammerDamage,incomingX=c.body.vx||0,incomingZ=c.body.vz||0;
    const result=updateBotDriver(c,dt,time,{ground:this.ground,obstacles:navigationObstacles,friendlies});
+   if(damage&&result.impactSpeed>5){
+    // Final substep contact flags can already be clear. The existing peak
+    // impact event gates this cosmetic observer; velocity loss gives its side.
+    const x=incomingX-c.body.vx,z=incomingZ-c.body.vz,cos=Math.cos(c.body.yaw),sin=Math.sin(c.body.yaw);
+    damage.impact(result.impactSpeed,cos*x-sin*z,sin*x+cos*z);
+   }
    poseBotVehicle(c.mesh,c.body,dt,this.ground);
    h.botCarsOld.array[c.index].set(c.old.x,c.old.y+.9,c.old.z,0);
    h.botCars.array[c.index].set(c.body.pos.x,c.body.pos.y+.9,c.body.pos.z,dt?result.moved/dt:0);

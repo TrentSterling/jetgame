@@ -2,6 +2,7 @@ import * as T from 'three/webgpu';
 import {buggy} from './art.js';
 import {characterFace,characterLoft,faceFront} from './character-shapes.js';
 import {buildRammerCoachwork} from './rammer-art.js';
+import {attachRammerDamage} from './rammer-damage.js';
 
 // A deliberately small rig: five opaque draws per ally and one short-lived
 // muzzle flash. Flat, painted geometry keeps these living people distinct from
@@ -207,13 +208,15 @@ function buildSurvivorGeometry(index=0){
 // Repaint and merge a rigid assembly, retaining original hidden pieces for the
 // existing vehicle disposal/breakup conventions. The original shared palette is
 // never mutated or disposed. Every new material is owned by this model alone.
-function batchPainted(root,material,exclude=new Set()){
+function batchPainted(root,material,exclude=new Set(),spans=null){
  root.updateWorldMatrix(true,true);
  const inverse=root.matrixWorld.clone().invert(),matrix=new T.Matrix4(),part=new PaintedPart(),sources=[];
  const visit=o=>{
   if(exclude.has(o)||!o.visible)return;
   if(o!==root&&o.isMesh&&!Array.isArray(o.material)&&o.material.isMeshStandardMaterial){
+   const start=part.positions.length/3;
    matrix.multiplyMatrices(inverse,o.matrixWorld);part.geometry(o.geometry,matrix,o.material.color);sources.push(o);
+   if(spans)spans.push({source:o,start,count:part.positions.length/3-start});
   }
   for(const child of o.children)visit(child);
  };visit(root);
@@ -304,7 +307,8 @@ export function createBotVehicle(kind='rammer'){
  for(const wheel of u.wheels)batchPainted(wheel,material);
  const exclude=new Set([u.driver,u.steering,...u.wheelPivots,...u.boost]);
  for(const leg of u.suspension)for(const key of ['arm','shock','spring'])exclude.add(leg[key]);
- batchPainted(mesh,material,exclude);
+ const damageSpans=kind==='rammer'?[]:null,render=batchPainted(mesh,material,exclude,damageSpans);
+ if(damageSpans)attachRammerDamage(mesh,render,damageSpans);
  Object.assign(u,{botKind:kind,botMotion:{wheelSpin:0},artContract:'Local -Z forward. poseBotVehicle owns body transform, driver, steering and wheel suspension.'});
  poseBotVehicle(mesh,{pos:new T.Vector3(),yaw:0,pitch:0,roll:0,speed:0,steer:0,suspension:0,grounded:true},0,flatGround);
  return mesh;
