@@ -1,5 +1,6 @@
 import * as T from 'three/webgpu';
 import {buildJetHero} from './jet-hero-art.js';
+import {attachJetDamage} from './jet-damage.js';
 import {compositeRigid} from './composite.js';
 
 export const material=(color,metalness=0,roughness=.8)=>new T.MeshStandardMaterial({color,metalness,roughness});
@@ -188,7 +189,7 @@ export function buggy({batch=true}={}){const g=new T.Group();
 // The playable JET/015 keeps the original root, weapon/exhaust anchors and
 // rigid-part metadata. Flight, collision, damage and respawn remain unchanged.
 export function jet({batch=true}={}){
- return buildJetHero({batcher:batch?batchVehicle:null});
+ return attachJetDamage(buildJetHero({batcher:batch?batchVehicle:null}));
 }
 
 export function batchVehicle(root){

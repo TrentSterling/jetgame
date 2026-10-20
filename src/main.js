@@ -163,7 +163,7 @@ function respawn(){if(!dead||time<deathAt+.65)return false;
  dead=false;shieldUntil=time+3.2;hurtUntil=0;respawns++;keys.clear();pressed.clear();mouseDown=secondaryDown=false;aimX=aimY=0;shakes=damageFade=0;reload=0;gunShotTimes.fill(-Infinity);gunShotIndex=0;ammo=upgrades.magazine;bombs=upgrades.bombCapacity;
  const body=next==='foot'?player:next==='car'?car:plane;body.health=player.health=100;body.pos.set(0,next==='jet'?12:next==='foot'?32:0,z);body.yaw=yaw;body.boost=1;body.boostLocked=false;body.boostDelay=0;body.wallContact=false;transitionLeft=0;
  if(next==='car'){car.speed=22;resetDriving(car);car.impactAt=0;carMesh.visible=true;}
- if(next==='jet'){plane.speed=32;plane.pitch=plane.flightPitch=plane.roll=0;plane.impactAt=0;plane.skimming=plane.taxiing=false;jetMesh.visible=true;}
+ if(next==='jet'){plane.speed=32;plane.pitch=plane.flightPitch=plane.roll=0;plane.impactAt=0;plane.skimming=plane.taxiing=false;jetMesh.visible=true;jetMesh.userData.jetDamage?.reset();}
  if(next==='foot'){resetInfantry(player);player.pitch=-.2;player.grounded=false;player.hasChute=player.parachute=true;player.vy=-4.5;}
  mode=next;gun.visible=next==='foot';$('mode').textContent=next==='foot'?modeNames[next]:fleet.active[next].name.toUpperCase();$('crosshair').hidden=false;$('gate').hidden=true;syncVehicles();updateCamera(0,true);
  const arrival=new T.Vector3(0,height(0,z),z);fx.explosion(arrival,7);pendingBlasts.push(new T.Vector4(0,arrival.y+.5,z,11));message('BACK IN · 3 SECONDS OF ARMOR',3.2);flowAt=0;return true;
@@ -254,7 +254,9 @@ function coastVehicles(dt){
  if((mode!=='jet'||dead)&&plane.health>0&&plane.speed>.02){
   const agl=plane.pos.y-height(plane.pos.x,plane.pos.z);plane.pitch=-.28;
   if(agl<1.55){plane.taxiing=true;plane.speed=Math.max(0,plane.speed-dt*20);}
+  jetMesh.userData.jetDamage?.begin(plane);
   const flight=stepFlight(plane,dt,{throttle:0,bank:0,yaw:0,pitch:0,boost:false},rideHeight,obstacles);
+  jetMesh.userData.jetDamage?.observe(plane,flight,dt,time,mode==='jet'&&(dead||time<shieldUntil));
   if(flight.impact&&!plane.wallContact)crashDamage(plane,flight.impactSpeed);plane.wallContact=flight.impact;
   if(flight.groundImpact>8)crashDamage(plane,flight.groundImpact*1.5);
  }
@@ -272,7 +274,9 @@ function updateControls(dt){
  }else if(mode==='car'){
   driveCar(dt,w,a,carBoost,keys.has('Space'));
  }else{
+  jetMesh.userData.jetDamage?.begin(plane);
   const flight=stepFlight(plane,dt,{throttle:w,bank:a,yaw:aimX,pitch:aimY,boost:jetBoost},rideHeight,obstacles);
+  jetMesh.userData.jetDamage?.observe(plane,flight,dt,time,dead||time<shieldUntil);
   if(flight.impact&&!plane.wallContact)crashDamage(plane,flight.impactSpeed);plane.wallContact=flight.impact;
   if(flight.groundImpact>8)crashDamage(plane,flight.groundImpact*1.5);
   if(flight.returning)message('AIRFIELD ←',.3);
