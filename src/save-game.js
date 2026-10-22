@@ -3,6 +3,7 @@
 import {regionAt,validExpeditionPeople} from './regions.js';
 import {migrateLegacySpawn} from './spawn-migration.js';
 import {BOT_COUNTER_COUNT,LEGACY_COUNTER_COUNT,checkpointRegion,migrateBotCheckpoint} from './bot-save-migration.js';
+import {validFlightControl} from './flight-control.js';
 export const SAVE_SCHEMA=1,WORLD_VERSION='expeditions-1';
 const bodyData=body=>Object.fromEntries(Object.entries(body).filter(([k,v])=>k==='pos'||['number','boolean','string'].includes(typeof v)).map(([k,v])=>[k,k==='pos'?v.toArray():v]));
 const setBody=(body,data)=>{for(const [k,v] of Object.entries(data))if(k==='pos')body.pos.fromArray(v);else body[k]=v;};
@@ -21,6 +22,7 @@ export function validateCheckpoint(s,count){
  if(!s.upgrades||!modes.every(k=>Number.isInteger(s.upgrades.levels?.[k])&&s.upgrades.levels[k]>=0&&s.upgrades.levels[k]<=3)||!['earned','spent','rewards'].every(k=>finite(s.upgrades[k])&&s.upgrades[k]>=0))bad('upgrades');
  if(!s.fleet||!Array.isArray(s.fleet.bodies)||s.fleet.bodies.length>100000||!s.fleet.bodies.every(b=>bodyValid(b)&&typeof b.fleetId==='string'&&['buggy','scout','carrier','jet'].includes(b.kind)))bad('vehicles');
  const ids=new Set(s.fleet.bodies.map(b=>b.fleetId));
+ if(!s.fleet.bodies.every(b=>b.kind!=='jet'||validFlightControl(b)))bad('flight response');
  if(ids.size!==s.fleet.bodies.length||!['car','jet'].every(k=>ids.has(s.fleet.active?.[k]))||!ids.has('starter-buggy')||!ids.has('starter-jet'))bad('vehicle selection');
  if(!s.fleet.bodies.some(b=>b.fleetId===s.fleet.active.jet&&b.kind==='jet')||!s.fleet.bodies.some(b=>b.fleetId===s.fleet.active.car&&b.kind!=='jet'))bad('vehicle type');
  const e=s.expeditions;

@@ -22,6 +22,41 @@ export function aircraftSweepBounds(before,after){
  // Covers the sub-millimetre rotation arc between sampled poses.
  for(const b of out)for(let i=0;i<3;i++){b[i]-=.003;b[i+3]+=.003;}return out;
 }
+// Maximum of the game's piecewise-linear 2 m terrain over a rectangle. Include
+// clipped cell edges and diagonals, not vertices outside the footprint: those
+// would make the support floor jump as a wing crosses a lattice boundary.
+function terrainMaximum(x0,z0,x1,z1,ground){
+ const xs=[x0,x1],zs=[z0,z1];
+ for(let x=Math.ceil(x0/2)*2;x<x1;x+=2)xs.push(x);
+ for(let z=Math.ceil(z0/2)*2;z<z1;z+=2)zs.push(z);
+ let top=-Infinity;
+ for(const x of xs)for(const z of zs)top=Math.max(top,ground(x,z));
+ for(const x of [x0,x1])for(let z=Math.floor(z0/2)*2;z<=z1;z+=2){const q=z+2-(x-Math.floor(x/2)*2);if(q>=z0&&q<=z1)top=Math.max(top,ground(x,q));}
+ for(const z of [z0,z1])for(let x=Math.floor(x0/2)*2;x<=x1;x+=2){const q=x+2-(z-Math.floor(z/2)*2);if(q>=x0&&q<=x1)top=Math.max(top,ground(q,z));}
+ return top;
+}
+// The same conservative seven airframe envelopes used for buildings protect
+// wing/nose/tail clearance over terrain. The 1.05 m level skid remains intact.
+// Callers cache terrain samples for the duration of one aircraft frame.
+export function aircraftTerrainFloor(pos,shapes,ground,clearance=1.05){
+ let floor=ground(pos.x,pos.z)+clearance;
+ // Airborne broadphase: enclosing lattice nodes give a conservative upper
+ // bound. Well above that bound every control/clearance decision is unchanged,
+ // so avoid evaluating clipped hull edges until the aircraft is near terrain.
+ if(Number.isFinite(pos.y)){
+  const x0=pos.x+Math.min(...shapes.map(b=>b[0])),x1=pos.x+Math.max(...shapes.map(b=>b[3]));
+  const z0=pos.z+Math.min(...shapes.map(b=>b[2])),z1=pos.z+Math.max(...shapes.map(b=>b[5]));
+  let top=-Infinity;
+  for(let x=Math.floor(x0/2)*2;x<=Math.ceil(x1/2)*2;x+=2)for(let z=Math.floor(z0/2)*2;z<=Math.ceil(z1/2)*2;z+=2)top=Math.max(top,ground(x,z));
+  const upper=Math.max(floor,top-Math.min(...shapes.map(b=>b[1]))+.01);
+  if(pos.y>upper+6)return upper;
+ }
+ for(const b of shapes){
+  const top=terrainMaximum(pos.x+b[0],pos.z+b[2],pos.x+b[3],pos.z+b[5],ground);
+  floor=Math.max(floor,top-b[1]+.01);
+ }
+ return floor;
+}
 const inside=(p,b)=>axes.every((a,i)=>p[a]>b[i]+1e-9&&p[a]<b[i+3]-1e-9);
 // Airfield hangars have a 30 cm roof overhang and projecting front trim.
 // Keep these in the aircraft/debris path without changing car or crowd bounds.
