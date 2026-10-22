@@ -12,6 +12,7 @@ import {Horde} from './horde.js';
 import {Effects} from './fx.js';
 import {startupUI} from './startup.js';
 import {stepFlight,flightVector,flightMotion} from './flight.js';
+import {updateJetExhaust} from './jet-exhaust.js';
 import {groundScrapeDamage,resetFlightDamage} from './flight-damage.js';
 import {Progression} from './progression.js';
 import {VehicleEffects} from './vehicle-fx.js';
@@ -140,6 +141,7 @@ function syncVehicles(){
  for(const wheel of carMesh.userData.wheelPivots)wheel.rotation.y=wheel.position.z<0?-car.steer*.42:0;
  poseSuspension(carMesh,car,rideHeight);
  jetMesh.position.copy(plane.pos);jetMesh.rotation.order='YXZ';jetMesh.rotation.set(plane.flightPitch,plane.yaw,plane.roll);
+ updateJetExhaust(jetMesh,plane,time);
 }
 function breakVehicle(which){
  const body=which==='car'?car:plane,mesh=which==='car'?carMesh:jetMesh;if(!mesh.visible)return;
@@ -291,7 +293,7 @@ function updateControls(dt){
   if(bombs<upgrades.bombCapacity){rearm+=dt;if(rearm>upgrades.rearmSeconds){bombs++;rearm=0;}}
  }
  canopy.visible=mode==='foot'&&player.parachute;canopy.position.copy(player.pos);canopy.rotation.set(0,player.yaw,Math.sin(time*2)*.025);const opening=canopy.visible?Math.min(1,canopy.scale.x+dt*5):.08;canopy.scale.set(opening,1,opening);
- for(const [body,mesh] of [[car,carMesh],[plane,jetMesh]])for(const flame of mesh.userData.boost){flame.visible=body.health>0&&(body.boosting||(body===plane&&body.speed>1));flame.scale.y=(body.boosting?2.2:.65)*(1+Math.sin(time*55)*.12);}
+ for(const flame of carMesh.userData.boost){flame.visible=car.health>0&&car.boosting;flame.scale.y=(car.boosting?2.2:.65)*(1+Math.sin(time*55)*.12);}
  if(pressed.has('KeyR')&&mode==='foot'&&ammo<upgrades.magazine&&reload<=0)reload=1.35;
  if(reload>0){reload=Math.max(0,reload-dt);if(!reload)ammo=upgrades.magazine;}
 }
@@ -375,9 +377,11 @@ async function init(){try{
    fx.explosion(new T.Vector3(0,0,60),1);
    fx.skid(new T.Vector3(0,0,60),0,0);
    gun.userData.flash.visible=true;canopy.visible=true;carMesh.userData.driver.visible=true;for(const mesh of [carMesh,jetMesh])for(const flame of mesh.userData.boost)flame.visible=true;
+   updateJetExhaust(jetMesh,{health:100,boosting:true,speed:0},0);
    defenses.warm(true);bots.warm(true);await renderer.compileAsync(scene,camera);
    renderer.render(scene,camera);defenses.warm(false);bots.warm(false);
    fx.clear();lighting.clear();lighting.update(camera,0);gun.userData.flash.visible=canopy.visible=carMesh.userData.driver.visible=false;for(const mesh of [carMesh,jetMesh])for(const flame of mesh.userData.boost)flame.visible=false;
+   updateJetExhaust(jetMesh,plane,time);
  },true);
  await startup.phase('Drawing battlefield',()=>renderer.render(scene,camera),true);
  const params=new URLSearchParams(location.search);

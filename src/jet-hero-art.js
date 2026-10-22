@@ -3,6 +3,7 @@
 // Copyright (c) 2010-2026 three.js authors, MIT; see LICENSE.
 // JET/015 runtime: runtime.js
 import * as T6 from "three/webgpu";
+import {makeJetExhaust} from './jet-exhaust.js';
 
 // JET/015 runtime: merge.js
 import {
@@ -695,13 +696,7 @@ function buildJetHeroUncached() {
   root.userData.guns = [];
   root.userData.flashes = [];
   for (const side of [-1, 1]) {
-    const glowGeo = new T6.ConeGeometry(0.3, 1.8, 12);
-    glowGeo.translate(side * (1.12 * 9 / 11 - 0.68), 0.55, 0);
-    const glow = new T6.Mesh(glowGeo, new T6.MeshBasicMaterial({ color: "#ffa749" }));
-    glow.name = side < 0 ? "Port boost flame" : "Starboard boost flame";
-    glow.rotation.x = Math.PI / 2;
-    glow.position.set(side * 0.68, 0, 3.1);
-    glow.visible = false;
+    const glow = makeJetExhaust(side);
     root.add(glow);
     root.userData.boost.push(glow);
     const mount = new T6.Group();
