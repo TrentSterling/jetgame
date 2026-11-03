@@ -1,0 +1,162 @@
+diff --git a/src/art.js b/src/art.js
+index 5a8dfc7..e9c36f4 100644
+--- a/src/art.js
++++ b/src/art.js
+@@ -3,0 +4 @@ import {attachJetDamage} from './jet-damage.js';
++import {installVehiclePanels} from './vehicle-panels.js';
+@@ -133 +134 @@ export function weapon(){
+-export function buggy({batch=true,occupantVariant=1,crew=false}={}){const g=new T.Group();
++export function buggy({batch=true,occupantVariant=1,crew=false,articulatedPanels=true}={}){const g=new T.Group();
+@@ -134,0 +136 @@ export function buggy({batch=true,occupantVariant=1,crew=false}={}){const g=new
++ const panels=[];
+@@ -136,2 +138,2 @@ export function buggy({batch=true,occupantVariant=1,crew=false}={}){const g=new
+- box(g,[1.7,.28,1.15],[0,1.07,-1.25],mat.orange).rotation.x=.12;
+- box(g,[1.5,.36,.8],[0,1.06,1.45],mat.steel);
++ const hood=box(g,[1.7,.28,1.15],[0,1.07,-1.25],mat.orange);hood.rotation.x=.12;panels[0]=hood;
++ panels[1]=box(g,[1.5,.36,.8],[0,1.06,1.45],mat.steel);
+@@ -146 +148 @@ export function buggy({batch=true,occupantVariant=1,crew=false}={}){const g=new
+-  box(g,[.18,.22,1.4],[s*.88,1.0,.1],mat.orange);
++  panels[s<0?2:3]=box(g,[.18,.22,1.4],[s*.88,1.0,.1],mat.orange);
+@@ -174,0 +177 @@ export function buggy({batch=true,occupantVariant=1,crew=false}={}){const g=new
++ if(articulatedPanels)installVehiclePanels(g,panels);
+@@ -197 +200 @@ export function batchVehicle(root){
+- const u=root.userData,exclude=new Set([...(u.boost||[]),...(u.wheelPivots||[]),...(u.guns||[])]);
++ const u=root.userData,exclude=new Set([...(u.vehiclePanels?.excluded||[]),...(u.boost||[]),...(u.wheelPivots||[]),...(u.guns||[])]);
+diff --git a/src/bot-art.js b/src/bot-art.js
+index f5d47fa..327072b 100644
+--- a/src/bot-art.js
++++ b/src/bot-art.js
+@@ -79 +79 @@ export function createBotVehicle(kind='rammer'){
+- const mesh=buggy({batch:false,occupantVariant:kind==='rammer'?0:kind==='circler'?1:2,crew:true}),u=mesh.userData,material=paintedMaterial(),extra=new PaintedPart();
++ const mesh=buggy({batch:false,occupantVariant:kind==='rammer'?0:kind==='circler'?1:2,crew:true,articulatedPanels:false}),u=mesh.userData,material=paintedMaterial(),extra=new PaintedPart();
+diff --git a/src/composite.js b/src/composite.js
+index d648779..f71f57a 100644
+--- a/src/composite.js
++++ b/src/composite.js
+@@ -32 +32 @@ export function visitOriginalParts(root,visit){
+- if(root.userData.rigidComposite||(!root.visible&&!root.userData.rigidSource))return;
++ if(root.userData.panelDetached||root.userData.rigidComposite||(!root.visible&&!root.userData.rigidSource))return;
+diff --git a/src/driving-fx.js b/src/driving-fx.js
+index bc05602..749efcf 100644
+--- a/src/driving-fx.js
++++ b/src/driving-fx.js
+@@ -6 +6 @@ export class DrivingEffects{
+-  this.ground=ground;this.dummy=new T.Object3D();this.clock=0;this.emitAt=0;this.cursor=0;this.markCount=0;this.dustCursor=0;this.bloodUntil=0;this.bloodBody=null;this.lastVehicle=null;this.fx=null;
++  this.ground=ground;this.dummy=new T.Object3D();this.clock=0;this.emitAt=0;this.cursor=0;this.markCount=0;this.dustCursor=0;this.bloodUntil=0;this.bloodBody=null;this.lastVehicle=null;this.fx=null;this.roostAt=0;this.roostBursts=0;this.roostP=new T.Vector3();this.roostV=new T.Vector3();
+@@ -15 +15 @@ export class DrivingEffects{
+- clear(){this.cursor=this.markCount=this.dustCursor=this.clock=this.emitAt=0;this.previous=[null,null];this.bloodUntil=0;this.bloodBody=null;this.dummy.scale.setScalar(0);this.dummy.updateMatrix();
++ clear(){this.cursor=this.markCount=this.dustCursor=this.clock=this.emitAt=0;this.previous=[null,null];this.bloodUntil=0;this.bloodBody=null;this.roostAt=this.roostBursts=0;this.lastVehicle=null;this.dummy.scale.setScalar(0);this.dummy.updateMatrix();
+@@ -37 +37 @@ export class DrivingEffects{
+-  const vehicle=car.fleetId||car;if(this.lastVehicle!==vehicle){this.previous=[null,null];this.lastVehicle=vehicle;}
++  const vehicle=car.fleetId||car;if(this.lastVehicle!==vehicle){this.previous=[null,null];this.lastVehicle=vehicle;this.roostAt=this.clock;}
+@@ -39,0 +40,9 @@ export class DrivingEffects{
++  if(this.fx&&speed>12&&(sliding||bloody)&&this.clock>=this.roostAt){
++   this.roostAt=this.clock+.065;this.roostBursts++;const c=Math.cos(car.yaw),s=Math.sin(car.yaw),strength=Math.min(1,Math.abs(car.slip)*2+(handbrake?.25:0)),flow=bloody?Math.max(0,(this.bloodUntil-this.clock)/5):0;
++   for(const side of [-1,1])for(let j=0;j<2;j++){
++    this.roostP.set(car.pos.x+c*side*1.15+s*1.35,0,car.pos.z-s*side*1.15+c*1.35);this.roostP.y=this.ground(this.roostP.x,this.roostP.z)+.18;
++    const outward=1.5+strength*3+this.fx.random()*2;
++    this.roostV.set((car.vx||0)*.18+c*side*outward+s*(3+speed*.06),1.5+this.fx.random()*2.8,-s*side*outward+(car.vz||0)*.18+c*(3+speed*.06));
++    this.fx.fragment(this.roostP,this.roostV,.035+this.fx.random()*.06,.35+this.fx.random()*.35,flow>.05&&j===0?'#75232a':'#ad9167');
++   }
++  }
+diff --git a/src/main.js b/src/main.js
+index 8b02230..08a712c 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -241 +241 @@ function handleUIAction(action){
+-function syncVehicles(dt=0){
++function syncVehicles(dt=0,impact=false){
+@@ -248 +248 @@ function syncVehicles(dt=0){
+- attachVehicleDamage(carMesh).sync(car);
++ attachVehicleDamage(carMesh).sync(car,dt,vehicleFX,impact);
+@@ -254 +254 @@ function breakVehicle(which,impact=null){
+- syncVehicles();if(which==='car')carMesh.userData.vehicleDamage?.prepareWreck(body);const motion=which==='jet'?aircraftBreakupMotion(plane,impact):null,velocity=which==='car'?new T.Vector3(car.vx,car.vy,car.vz):motion?new T.Vector3().copy(motion.velocity):flightDirection().multiplyScalar(plane.speed);
++ syncVehicles(0,which==='car');if(which==='car')carMesh.userData.vehicleDamage?.prepareWreck(body);const motion=which==='jet'?aircraftBreakupMotion(plane,impact):null,velocity=which==='car'?new T.Vector3(car.vx,car.vy,car.vz):motion?new T.Vector3().copy(motion.velocity):flightDirection().multiplyScalar(plane.speed);
+@@ -295 +295 @@ function restoreRuntime(s){
+- resetFlightDamage(plane);ordnance.clear();pendingBlasts.length=0;for(const b of activeBombs){scene.remove(b.mesh);b.mesh.geometry.dispose();b.mesh.material.dispose();}activeBombs.length=0;
++ resetFlightDamage(plane);vehicleFX.clear();ordnance.clear();pendingBlasts.length=0;for(const b of activeBombs){scene.remove(b.mesh);b.mesh.geometry.dispose();b.mesh.material.dispose();}activeBombs.length=0;
+@@ -509 +509 @@ function updateHUD(){
+-  saveStatus:ui.saveStatus,saveAvailable:!!saves?.enabled&&!saves.blocked,continuing:ui.continuing,muted:fx.mixer.muted,version:'0.13.0',
++  saveStatus:ui.saveStatus,saveAvailable:!!saves?.enabled&&!saves.blocked,continuing:ui.continuing,muted:fx.mixer.muted,version:'0.14.0',
+diff --git a/src/vehicle-demolition.js b/src/vehicle-demolition.js
+index 2dd51ee..b05a5df 100644
+--- a/src/vehicle-demolition.js
++++ b/src/vehicle-demolition.js
+@@ -10 +10 @@ const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a));return t*t*(3-2*t);};
+-function deform(out,x,y,z,state){
++export function deformVehiclePoint(out,x,y,z,state){
+@@ -24,0 +25 @@ export function attachVehicleDamage(root){
++ for(const o of root.userData.vehiclePanels?.excluded||[])excluded.add(o);
+@@ -46 +47 @@ export function attachVehicleDamage(root){
+-   deform(p,x,y,z,state);deform(nx,x+e,y,z,state).sub(p).multiplyScalar(1/e);deform(ny,x,y+e,z,state).sub(p).multiplyScalar(1/e);deform(nz,x,y,z+e,state).sub(p).multiplyScalar(1/e);
++   deformVehiclePoint(p,x,y,z,state);deformVehiclePoint(nx,x+e,y,z,state).sub(p).multiplyScalar(1/e);deformVehiclePoint(ny,x,y+e,z,state).sub(p).multiplyScalar(1/e);deformVehiclePoint(nz,x,y,z+e,state).sub(p).multiplyScalar(1/e);
+@@ -59 +60 @@ export function attachVehicleDamage(root){
+-  sync(body){for(let i=0;i<6;i++)state[i]=clamp(body[DENT_KEYS[i]]||0);state[6]=clamp(body.bloodCoat||0);
++  sync(body,dt=0,effects=null,impact=false){root.userData.vehiclePanels?.sync(body,dt,effects,impact);for(let i=0;i<6;i++)state[i]=clamp(body[DENT_KEYS[i]]||0);state[6]=clamp(body.bloodCoat||0);
+@@ -63 +64 @@ export function attachVehicleDamage(root){
+-  prepareWreck(body){api.sync(body);for(const entry of originals)apply(entry,state.every(v=>v===0));},
++  prepareWreck(body){api.sync(body);root.userData.vehiclePanels?.prepareWreck();for(const entry of originals)apply(entry,state.every(v=>v===0));},
+diff --git a/src/vehicle-fx.js b/src/vehicle-fx.js
+index 080ddb0..f376a04 100644
+--- a/src/vehicle-fx.js
++++ b/src/vehicle-fx.js
+@@ -19 +19,2 @@ export class VehicleEffects{
+- clear(){for(const p of this.parts){this.scene.remove(p.mesh);if(p.ownsGeometry)p.mesh.geometry.dispose();}this.parts.length=0;this.clock=0;this.emitAt={car:0,jet:0};for(let i=0;i<this.smokeCount;i++){this.puffs[i].life=0;this.dummy.scale.setScalar(0);this.dummy.updateMatrix();this.smoke.setMatrixAt(i,this.dummy.matrix);this.smoke.setColorAt(i,new T.Color('#444541'));this.alpha.array[i]=0;}this.smoke.instanceMatrix.needsUpdate=true;this.alpha.needsUpdate=true;}
++ removePart(p){this.scene.remove(p.mesh);if(p.ownsGeometry)p.mesh.geometry.dispose();if(p.ownsMaterial)p.mesh.material.dispose();}
++ clear(){for(const p of this.parts)this.removePart(p);this.parts.length=0;this.clock=0;this.emitAt={car:0,jet:0};for(let i=0;i<this.smokeCount;i++){this.puffs[i].life=0;this.dummy.scale.setScalar(0);this.dummy.updateMatrix();this.smoke.setMatrixAt(i,this.dummy.matrix);this.smoke.setColorAt(i,new T.Color('#444541'));this.alpha.array[i]=0;}this.smoke.instanceMatrix.needsUpdate=true;this.alpha.needsUpdate=true;}
+@@ -21 +22,13 @@ export class VehicleEffects{
+- breakup(source,velocity,options={}){const added=[];source.updateWorldMatrix(true,true);visitOriginalParts(source,o=>{if(o.isSkinnedMesh||o.material.isMeshBasicMaterial)return;const ownsGeometry=!!o.userData.cosmeticWreckSnapshot;const mesh=new T.Mesh(ownsGeometry?o.geometry.clone():o.geometry,this.charred);o.matrixWorld.decompose(mesh.position,mesh.quaternion,mesh.scale);mesh.castShadow=true;this.scene.add(mesh);let vel,spin;if(options.physical){vel=new T.Vector3();spin=new T.Vector3();}else{const away=mesh.position.clone().sub(source.position).normalize();vel=velocity.clone().multiplyScalar(.45).addScaledVector(away,5+Math.random()*6);vel.y+=5+Math.random()*7;spin=new T.Vector3(Math.random()*5,Math.random()*5,Math.random()*5);}added.push({mesh,vel,spin,life:10,ownsGeometry});});if(options.physical)this.lastBreakup=initializeWreck(added,velocity,options);this.parts.push(...added);while(this.parts.length>120){const p=this.parts.shift();this.scene.remove(p.mesh);if(p.ownsGeometry)p.mesh.geometry.dispose();}}
++ shedPanel(geometry,material,matrixWorld,body,angularVelocity,name){
++  // Detached metal owns its resource snapshots: unloading/repairing the car
++  // cannot dispose an airborne panel. Both total wreck and live-panel counts cap.
++  const mesh=new T.Mesh(geometry.clone(),material.clone());mesh.name='Detached '+name;
++  matrixWorld.decompose(mesh.position,mesh.quaternion,mesh.scale);mesh.castShadow=true;mesh.receiveShadow=true;this.scene.add(mesh);
++  const p={mesh,vel:new T.Vector3(),spin:new T.Vector3(),life:8,ownsGeometry:true,ownsMaterial:true,panel:true};
++  initializeWreck([p],new T.Vector3(body.vx||0,body.vy||0,body.vz||0),{origin:body.pos,angularVelocity,random:()=>.5});
++  const away=p.position.clone().sub(body.pos);away.y=0;if(away.lengthSq()>.001)away.normalize();p.vel.addScaledVector(away,1.2);p.vel.y+=.8;
++  this.parts.push(p);
++  while(this.parts.filter(x=>x.panel).length>24){const i=this.parts.findIndex(x=>x.panel);this.removePart(this.parts.splice(i,1)[0]);}
++  while(this.parts.length>120)this.removePart(this.parts.shift());return p;
++ }
++ breakup(source,velocity,options={}){const added=[];source.updateWorldMatrix(true,true);visitOriginalParts(source,o=>{if(o.isSkinnedMesh||o.material.isMeshBasicMaterial)return;const ownsGeometry=!!o.userData.cosmeticWreckSnapshot;const mesh=new T.Mesh(ownsGeometry?o.geometry.clone():o.geometry,this.charred);o.matrixWorld.decompose(mesh.position,mesh.quaternion,mesh.scale);mesh.castShadow=true;this.scene.add(mesh);let vel,spin;if(options.physical){vel=new T.Vector3();spin=new T.Vector3();}else{const away=mesh.position.clone().sub(source.position).normalize();vel=velocity.clone().multiplyScalar(.45).addScaledVector(away,5+Math.random()*6);vel.y+=5+Math.random()*7;spin=new T.Vector3(Math.random()*5,Math.random()*5,Math.random()*5);}added.push({mesh,vel,spin,life:10,ownsGeometry});});if(options.physical)this.lastBreakup=initializeWreck(added,velocity,options);this.parts.push(...added);while(this.parts.length>120){const p=this.parts.shift();this.removePart(p);}}
+@@ -24 +37 @@ export class VehicleEffects{
+-  for(let i=this.parts.length-1;i>=0;i--){const p=this.parts[i];p.life-=dt;if(p.life<=0){this.scene.remove(p.mesh);if(p.ownsGeometry)p.mesh.geometry.dispose();this.parts.splice(i,1);continue;}const floor=height(p.mesh.position.x,p.mesh.position.z)+.18;
++  for(let i=this.parts.length-1;i>=0;i--){const p=this.parts[i];p.life-=dt;if(p.life<=0){this.removePart(p);this.parts.splice(i,1);continue;}const floor=height(p.mesh.position.x,p.mesh.position.z)+.18;
+@@ -27 +40 @@ export class VehicleEffects{
+-   if(p.life>8&&Math.random()<dt*6)this.puff(p.mesh.position,1);
++   if(!p.panel&&p.life>8&&Math.random()<dt*6)this.puff(p.mesh.position,1);
+diff --git a/src/vehicle-impact.js b/src/vehicle-impact.js
+index 85ca5ab..e4f8caf 100644
+--- a/src/vehicle-impact.js
++++ b/src/vehicle-impact.js
+@@ -1,0 +2,2 @@ export const DENT_KEYS=Object.freeze(['dentFL','dentFR','dentRL','dentRR','dentL
++export const PANEL_ZONES=Object.freeze([[0,1],[2,3],[4],[5]]);
++export const panelWear=(body,index)=>Math.max(...PANEL_ZONES[index].map(i=>Math.max(0,Math.min(1,body[DENT_KEYS[i]]||0))));
+@@ -4,3 +6,3 @@ const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a));return t*t*(3-2*t);};
+-export function resetVehicleDamage(body){for(const key of DENT_KEYS)body[key]=0;body.bloodCoat=0;}
+-export function validVehicleDamage(body){return [...DENT_KEYS,'bloodCoat'].every(k=>body[k]===undefined||(Number.isFinite(body[k])&&body[k]>=0&&body[k]<=1));}
+-export function repairVehicleDamage(body,fraction=1){const keep=1-clamp(fraction);for(const key of DENT_KEYS)body[key]=clamp(body[key]||0)*keep;body.bloodCoat=clamp(body.bloodCoat||0)*keep;}
++export function resetVehicleDamage(body){for(const key of DENT_KEYS)body[key]=0;body.bloodCoat=0;body.panelMask=0;}
++export function validVehicleDamage(body){return (body.panelMask===undefined||(Number.isInteger(body.panelMask)&&body.panelMask>=0&&body.panelMask<=15))&&[...DENT_KEYS,'bloodCoat'].every(k=>body[k]===undefined||(Number.isFinite(body[k])&&body[k]>=0&&body[k]<=1));}
++export function repairVehicleDamage(body,fraction=1){const keep=1-clamp(fraction);for(const key of DENT_KEYS)body[key]=clamp(body[key]||0)*keep;body.bloodCoat=clamp(body.bloodCoat||0)*keep;if(fraction>=.6)body.panelMask=0;}
+@@ -15 +17 @@ export function dentVehicle(body,speed,kind='wall',vx=body.vx||0,vz=body.vz||0){
+- const before=DENT_KEYS.map(k=>clamp(body[k]||0));
++ const before=DENT_KEYS.map(k=>clamp(body[k]||0)),oldMask=body.panelMask||0;let struck=0;
+@@ -22 +24 @@ export function dentVehicle(body,speed,kind='wall',vx=body.vx||0,vz=body.vz||0){
+-  for(let i=0;i<4;i++)body[DENT_KEYS[i]]=clamp(before[i]+amount*(i<2?1:.65));
++  struck=3;for(let i=0;i<4;i++)body[DENT_KEYS[i]]=clamp(before[i]+amount*(i<2?1:.65));
+@@ -28 +30 @@ export function dentVehicle(body,speed,kind='wall',vx=body.vx||0,vz=body.vz||0){
+-  if(Math.abs(forward)>.25){const offset=forward>0?0:2;
++  if(Math.abs(forward)>.25){const offset=forward>0?0:2;struck|=forward>0?1:2;
+@@ -31,0 +34 @@ export function dentVehicle(body,speed,kind='wall',vx=body.vx||0,vz=body.vz||0){
++  if(Math.abs(side)>.25)struck|=side<0?4:8;
+@@ -34 +37,8 @@ export function dentVehicle(body,speed,kind='wall',vx=body.vx||0,vz=body.vz||0){
+- return kind==='crowd'||DENT_KEYS.some((k,i)=>(body[k]||0)!==before[i]);
++ // Tear only under a substantial hard impact. Mowing crowds can loosen metal,
++ // but is never treated as a wall collision or a reason to lose bodywork.
++ if((kind==='wall'&&speed>=24)||(kind==='landing'&&speed>=34)){
++  let mask=body.panelMask||0;
++  for(let i=0;i<4;i++)if(panelWear(body,i)>=.78&&(struck&(1<<i)))mask|=1<<i;
++  body.panelMask=mask;
++ }
++ return kind==='crowd'||(body.panelMask||0)!==oldMask||DENT_KEYS.some((k,i)=>(body[k]||0)!==before[i]);
