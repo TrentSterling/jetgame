@@ -341,9 +341,14 @@ function shoot(){if(time+1e-6<shotAt||reload>0||dead)return false;if(mode==='foo
  if(mode==='jet'){origin=plane.pos.clone().addScaledVector(flightDirection(),4);dir=flightDirection();range=320;damage=95;}
  if(mode==='car'){origin=car.pos.clone().add(new T.Vector3(0,1.95,0));dir.copy(carAim?.direction||carWeaponDirection(car));damage=95;}
  shot.origin.set(origin.x,origin.y,origin.z,damage);const count=mode==='jet'?6:1;
+ // A filled circular cone around the barrel, not a horizontal fan with world-down bias.
+ // Share a rotating six-sector pattern per salvo so short bursts cover both axes.
+ const coneSide=mode==='jet'?new T.Vector3(Math.cos(plane.yaw),0,-Math.sin(plane.yaw)).applyAxisAngle(dir,-plane.roll):null;
+ const coneUp=mode==='jet'?new T.Vector3().crossVectors(coneSide,dir).normalize():null;
+ const conePhase=mode==='jet'?Math.random()*Math.PI*2:0;
  for(let i=0;i<6;i++){
   if(i>=count){shot.rays[i].set(0,0,0,0);continue;}
-  const d=dir.clone();if(mode==='jet'){const side=new T.Vector3(Math.cos(plane.yaw),0,-Math.sin(plane.yaw)),spread=(i-2.5)*.031+(Math.random()-.5)*.017;d.addScaledVector(side,spread);d.y-=.016+Math.random()*.04;d.normalize();}
+  const d=dir.clone();if(mode==='jet'){const angle=conePhase+i*Math.PI/3,radius=.085*Math.sqrt(Math.random());d.addScaledVector(coneSide,Math.cos(angle)*radius).addScaledVector(coneUp,Math.sin(angle)*radius).normalize();}
   const cast=clippedRay(origin,d,range);shot.rays[i].set(d.x,d.y,d.z,cast.range);if(cast.hit?.object.userData.breakable)course.shatter(cast.hit.object.userData.breakable,d.x*12,d.z*12,12);
   if(cast.hit){impactNormal.copy(cast.hit.face?.normal||new T.Vector3(0,1,0)).applyNormalMatrix(impactNormalMatrix.getNormalMatrix(cast.hit.object.matrixWorld));fx.surfaceImpact(cast.hit.point,impactNormal,mode);}
   else if(cast.range<range-.05){const point=origin.clone().addScaledVector(d,cast.range);impactNormal.set(height(point.x-.2,point.z)-height(point.x+.2,point.z),.4,height(point.x,point.z-.2)-height(point.x,point.z+.2)).normalize();fx.surfaceImpact(point,impactNormal,mode);}
@@ -506,7 +511,7 @@ function updateHUD(){
   upgrades:[...['foot','car','jet'].map((id,i)=>({id,key:['Z','X','V'][i],name:['CARBINE','TORQUE','STRIKE KIT'][i],detail:['Damage, magazine, fire rate','Acceleration and crowd impact','Bombs, blast and rearm'][i],level:upgrades.levels[id],cost:upgrades.cost(id),available:!dead&&upgrades.scrap>=upgrades.cost(id)&&upgrades.levels[id]<3})),{id:'cluster',key:'B',name:CLUSTER_UNLOCK.name,detail:'4 bomblets · Slower rearm',level:upgrades.equipment.cluster?1:0,cost:CLUSTER_UNLOCK.cost,equipped:upgrades.missileWarhead==='cluster',available:!dead&&(upgrades.equipment.cluster||upgrades.scrap>=CLUSTER_UNLOCK.cost)}],
   respawnMode,respawnSeconds:Math.max(0,respawnAt-time),deployAvailable:dead&&time>=deathAt+.65,keyboardOnly:document.pointerLockElement===canvas,
   ready:!!window.HordeStartup?.ready,progress:window.HordeStartup?.progress||0,phase:window.HordeStartup?.phase||'Starting graphics',phaseDetail:window.HordeStartup?.phaseDetail||'Preparing the game renderer.',phaseIndex:window.HordeStartup?.phaseIndex||0,phaseCount:window.HordeStartup?.phaseCount||14,error:window.bootError||'',sceneFade:ui.sceneFade,
-  saveStatus:ui.saveStatus,saveAvailable:!!saves?.enabled&&!saves.blocked,continuing:ui.continuing,muted:fx.mixer.muted,version:'0.14.0',
+  saveStatus:ui.saveStatus,saveAvailable:!!saves?.enabled&&!saves.blocked,continuing:ui.continuing,muted:fx.mixer.muted,version:'0.14.1',
  });
 }
 function renderFrame(dt=0){
