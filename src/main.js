@@ -22,7 +22,7 @@ import {VehicleEffects} from './vehicle-fx.js';
 import {freeSpot} from './collision.js';
 import {resetInfantry,stepInfantry,groundSurface,updateBoost} from './movement.js';
 
-import {resetDriving,stepDriving} from './driving.js';
+import {resetDriving,stepDriving,drivingSteeringAngle} from './driving.js';
 import {trackSurface} from './track-layout.js';
 import {StuntCourse} from './stunt-course.js';
 import {DrivingEffects} from './driving-fx.js';
@@ -142,7 +142,8 @@ function syncVehicles(){
  carMesh.position.copy(car.pos);carMesh.position.y+=car.suspension;carMesh.rotation.order='YXZ';carMesh.rotation.set(car.pitch,car.yaw,car.roll);
  carMesh.userData.driver.visible=mode==='car'&&!dead;
  carMesh.userData.driver.rotation.z=-car.roll*.6;carMesh.userData.head.rotation.y=car.steer*.2;
- for(const wheel of carMesh.userData.wheelPivots)wheel.rotation.y=wheel.position.z<0?-car.steer*.42:0;
+ const wheelAngle=-drivingSteeringAngle(car);
+ for(const wheel of carMesh.userData.wheelPivots)wheel.rotation.y=wheel.position.z<0?wheelAngle:0;
  poseSuspension(carMesh,car,rideHeight);
  jetMesh.position.copy(plane.pos);jetMesh.rotation.order='YXZ';jetMesh.rotation.set(plane.flightPitch,plane.yaw,plane.roll);
  updateJetExhaust(jetMesh,plane,time);

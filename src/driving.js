@@ -8,6 +8,15 @@ const handling={
  scout:{grip:20,inertia:1.45,steering:.55,spring:78,damping:12.5},
  carrier:{grip:15.5,inertia:2.5,steering:.48,spring:48,damping:9.5}
 };
+// Positive means tire forward points toward the chassis's local +X. Render
+// pivots use the opposite Y rotation because the vehicle faces local -Z.
+// Derive from current motion so posing after a restore/stop needs no saved or
+// one-tick-old steering field. Physics passes its already measured slice speed.
+export function drivingSteeringAngle(body,speed){
+ const magnitude=Number.isFinite(speed)?Math.abs(speed):Number.isFinite(body.vx)&&Number.isFinite(body.vz)?Math.hypot(body.vx,body.vz):Number.isFinite(body.speed)?Math.abs(body.speed):0;
+ const steer=Number.isFinite(body.steer)?body.steer:0;
+ return steer*(handling[body.kind]||handling.buggy).steering/(1+magnitude*magnitude/650);
+}
 export function resetDriving(car){
  Object.assign(car,{vx:-Math.sin(car.yaw)*car.speed,vz:-Math.cos(car.yaw)*car.speed,vy:0,steer:0,yawRate:0,slip:0,roll:0,pitch:0,driveRollV:0,drivePitchV:0,lateralAcceleration:0,longitudinalAcceleration:0,suspension:0,suspensionV:0,grounded:true,airTime:0,lastAirTime:0,landingSpeed:0,wallContact:false,_speed:car.speed,_x:car.pos.x,_z:car.pos.z});
 }
@@ -35,7 +44,7 @@ function driveStep(car,dt,input,ground,boxes){
  const acceleration=input.throttle*(opposed?35:power)*(input.torque??1)*(car.driveTorque??1);
  if(wasGrounded){
   const frontArm=1.35,rearArm=1.25,wheelbase=frontArm+rearArm;
-  const wheelAngle=car.steer*tune.steering/(1+oldSpeed*oldSpeed/650),cs=Math.cos(wheelAngle),sn=Math.sin(wheelAngle);
+  const wheelAngle=drivingSteeringAngle(car,oldSpeed),cs=Math.cos(wheelAngle),sn=Math.sin(wheelAngle);
   const frontLoad=tune.grip*rearArm/wheelbase,rearLoad=tune.grip*frontArm/wheelbase;
   // Axle point velocities include yaw momentum. Opposing tire forces turn
   // the body, while their sum accelerates the world-space velocity.

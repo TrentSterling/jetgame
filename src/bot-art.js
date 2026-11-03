@@ -3,6 +3,7 @@ import {buggy} from './art.js';
 import {characterFace,characterLoft,faceFront} from './character-shapes.js';
 import {buildRammerCoachwork} from './rammer-art.js';
 import {attachRammerDamage} from './rammer-damage.js';
+import {drivingSteeringAngle} from './driving.js';
 
 // A deliberately small rig: five opaque draws per ally and one short-lived
 // muzzle flash. Flat, painted geometry keeps these living people distinct from
@@ -326,7 +327,8 @@ export function poseBotVehicle(mesh,body,dt=0,ground=flatGround){
  if(u.steering)u.steering.rotation.z=-steer*.65;
  u.botMotion.wheelSpin=(u.botMotion.wheelSpin-safe(body.speed)*step/.66)%TAU;
  for(const wheel of u.wheels)wheel.rotation.y=u.botMotion.wheelSpin;
- for(const pivot of u.wheelPivots)pivot.rotation.y=pivot.position.z<0?-steer*.42:0;
+ const wheelAngle=-drivingSteeringAngle(body);
+ for(const pivot of u.wheelPivots)pivot.rotation.y=pivot.position.z<0?wheelAngle:0;
  mesh.updateMatrixWorld(true);
  for(const leg of u.suspension){
   const pivot=leg.pivot;hub.set(pivot.position.x,.66,pivot.position.z).applyMatrix4(mesh.matrixWorld);

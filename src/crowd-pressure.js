@@ -6,6 +6,7 @@ export const CROWD_COUNTERS=Object.freeze({alive:15,nearby:16,recycled:17});
 export const CROWD_PRESSURE=Object.freeze({
  corpseSeconds:12,corpseClearance:24,spawnClearance:66,spawnMin:78,spawnMax:152,
  nearbyRadius:100,scanCount:768,maxPerStep:12,maxDt:.1,
+ recruitMinDistance:250,recruitHitGrace:4,
  arrivalSeconds:12,cycleSeconds:80,recoverSeconds:16,buildSeconds:24,
 });
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -13,7 +14,7 @@ const finite=(value,fallback)=>Number.isFinite(value)?value:fallback;
 
 export class CrowdPressure{
  constructor(count=12000){this.count=Math.max(1,Math.floor(count));this.reset();}
- reset(time=0){this.credit=0;this.cursor=0;this.lastTime=finite(time,0);this.startedAt=this.lastTime;this.surgeUntil=-Infinity;this.lastSurge=-Infinity;this.pendingSurge=false;this.context={active:false,intensity:0,health:100};this.report={phase:'arrival',budget:0,rate:0,targetNearby:0};}
+ reset(time=0){this.credit=0;this.recruitCredit=0;this.cursor=0;this.lastTime=finite(time,0);this.startedAt=this.lastTime;this.surgeUntil=-Infinity;this.lastSurge=-Infinity;this.pendingSurge=false;this.context={active:false,intensity:0,health:100};this.report={phase:'arrival',budget:0,recruitBudget:0,rate:0,recruitRate:0,targetNearby:0};}
  setContext(context={}){
   const intensity=clamp(finite(context.intensity,0),0,1.5),active=context.active===true;
   if(active&&intensity>=1.1&&(!this.context.active||this.context.intensity<1.1))this.pendingSurge=true;
@@ -23,7 +24,7 @@ export class CrowdPressure{
  step(dt,time,stats={},goal={x:0,z:0}){
   const t=finite(time,0),elapsed=clamp(finite(dt,0),0,CROWD_PRESSURE.maxDt),c=this.context;
   // A checkpoint can move game time backwards. Unspent credits never survive it.
-  if(t<this.lastTime){this.credit=0;this.startedAt=t;this.surgeUntil=this.lastSurge=-Infinity;this.pendingSurge=false;}
+  if(t<this.lastTime){this.credit=this.recruitCredit=0;this.startedAt=t;this.surgeUntil=this.lastSurge=-Infinity;this.pendingSurge=false;}
   this.lastTime=t;
   const age=Math.max(0,t-this.startedAt),cycle=Math.max(0,age-CROWD_PRESSURE.arrivalSeconds)%CROWD_PRESSURE.cycleSeconds;
   let phase=age<CROWD_PRESSURE.arrivalSeconds?'arrival':cycle<CROWD_PRESSURE.recoverSeconds?'recover':cycle<CROWD_PRESSURE.recoverSeconds+CROWD_PRESSURE.buildSeconds?'build':'assault';
@@ -40,11 +41,22 @@ export class CrowdPressure{
   if(phase==='arrival')maximumRate=0;
   const nearby=clamp(finite(stats.nearby,0),0,this.count),alive=clamp(finite(stats.alive,this.count),0,this.count);
   const demand=clamp((targetNearby-nearby)/Math.max(1,targetNearby),0,1);
-  const rate=alive>=this.count?0:maximumRate*demand;
+  // An alarm also calls in existing distant mobile enemies. Split the same
+  // arrival rate between dead-slot replacements and living recruits so a full
+  // pool can answer an empty objective without doubling the pressure budget.
+  const recruitShare=phase==='assault'&&c.active&&intensity>=1.1?alive/this.count:0;
+  const recruitRate=maximumRate*demand*recruitShare;
+  const rate=alive>=this.count?0:maximumRate*demand*(1-recruitShare);
   // No stockpiled wave after a pause, full arena, camera turn or low-health lull.
   this.credit=rate>0?Math.min(CROWD_PRESSURE.maxPerStep,this.credit+rate*elapsed):0;
   const budget=Math.min(Math.floor(this.credit+1e-9),this.count-alive);
   this.credit-=budget;
+  this.recruitCredit=recruitRate>0?Math.min(CROWD_PRESSURE.maxPerStep,this.recruitCredit+recruitRate*elapsed):0;
+  const recruitRequested=Math.floor(this.recruitCredit+1e-9);
+  const recruitBudget=Math.min(recruitRequested,alive,CROWD_PRESSURE.maxPerStep-budget);
+  // Unissued attempts are discarded rather than becoming a later camera-turn
+  // burst. Only the sub-actor fractional credit carries between frames.
+  this.recruitCredit-=recruitRequested;
   const cursor=this.cursor;
   this.cursor=(this.cursor+Math.min(this.count,CROWD_PRESSURE.scanCount))%this.count;
   const gx=finite(goal.x,0),gz=finite(goal.z,0);
@@ -52,10 +64,17 @@ export class CrowdPressure{
   // the player's navigation window. Distant mission markers do not move it.
   const local=c.active&&Number.isFinite(c.x)&&Number.isFinite(c.z)&&Math.hypot(c.x-gx,c.z-gz)<180;
   const x=gx+(local?clamp(c.x-gx,-30,30):0),z=gz+(local?clamp(c.z-gz,-30,30):0);
-  this.report={phase,budget,rate,targetNearby,nearby,alive,intensity};
+  this.report={phase,budget,recruitBudget,rate,recruitRate,targetNearby,nearby,alive,intensity};
   return {budget,cursor,scanCount:Math.min(this.count,CROWD_PRESSURE.scanCount),epoch:Math.floor(t*.5),x,z,...this.report};
  }
 }
+
+// Pure scalar predicate shared by the production GPU kernel and its CPU source
+// check. Visibility is explicit: a missing camera never licenses recruitment.
+export const recruitmentEligibilityWGSL=`fn canRecruit(guard:bool,health:f32,kind:f32,stun:f32,hitUntil:f32,time:f32,playerDistance:f32,missionDistance:f32,visible:bool,viewReady:bool)->bool{
+ return !guard&&health>0.0&&kind>=0.0&&kind<=2.0&&stun<=0.0&&time>=hitUntil+${CROWD_PRESSURE.recruitHitGrace}.0
+  &&playerDistance>=${CROWD_PRESSURE.recruitMinDistance}.0&&missionDistance>=${CROWD_PRESSURE.recruitMinDistance}.0&&!visible&&viewReady;
+}`;
 
 function hash(value){let x=value>>>0;x=(x^(x>>>16))>>>0;x=Math.imul(x,0x7feb352d)>>>0;x=(x^(x>>>15))>>>0;x=Math.imul(x,0x846ca68b)>>>0;return (x^(x>>>16))>>>0;}
 export function reinforcementPosition(id,attempt,origin,epoch=0){

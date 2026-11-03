@@ -1,7 +1,7 @@
 import {terrainWGSL} from './terrain.js';
 import {spawnCrowdWGSL} from './spawn-layout.js';
 import {localCrowdWGSL,localCrowdClearance,localCrowdRecycleDistance} from './local-crowd.js';
-import {CROWD_PRESSURE,CROWD_COUNTERS,reinforcementWGSL} from './crowd-pressure.js';
+import {CROWD_PRESSURE,CROWD_COUNTERS,reinforcementWGSL,recruitmentEligibilityWGSL} from './crowd-pressure.js';
 import {encounterRings,encounterPacks,encounterRelocationDistance,encounterPursuitDistance} from './regions.js';
 import {
   Fn, If, Loop, Return, atomicAdd, atomicSub, atomicLoad, atomicStore, instanceIndex,
@@ -19,6 +19,7 @@ const cell = wgslFn(`fn cellIndex(p:vec2f)->u32 {
 const ground=wgslFn(terrainWGSL);
 const localPosition=wgslFn(localCrowdWGSL);
 const reinforcementPosition=wgslFn(reinforcementWGSL);
+const recruitmentEligible=wgslFn(recruitmentEligibilityWGSL);
 const outsideView=wgslFn(`fn outsideCrowdView(p:vec3f,view:mat4x4f)->bool{
  let q=view*vec4f(p+vec3f(0.0,1.5,0.0),1.0);
  // A margin includes the full articulated body and avoids edge popping.
@@ -27,7 +28,7 @@ const outsideView=wgslFn(`fn outsideCrowdView(p:vec3f,view:mat4x4f)->bool{
 
 export function createKernels(h) {
   const {pos, old, vel, state, blood, density, flow, counters, dt, time,
-    pressureScan,pressureOrigin,defenseOrigins, defenseRays, defenseIds, botOrigins, botRays, botIds, botCars, botCarsOld, viewProjection, viewEnabled, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
+    pressureScan,pressureOrigin,pressureRecruit,defenseOrigins, defenseRays, defenseIds, botOrigins, botRays, botIds, botCars, botCarsOld, viewProjection, viewEnabled, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
 
   const cellIndex=p=>cell(p.sub(fieldOrigin));
   const inside=p=>abs(p.x.sub(fieldOrigin.x)).lessThan(188).and(abs(p.y.sub(fieldOrigin.y)).lessThan(188));
@@ -47,7 +48,7 @@ export function createKernels(h) {
   const clear = Fn(() => {
     atomicStore(density.element(instanceIndex), uint(0));
     // Tail scratch slots preserve the eight-storage-buffer device limit.
-    If(instanceIndex.lessThan(3),()=>{atomicStore(density.element(instanceIndex.add(16384)),uint(0));});
+    If(instanceIndex.lessThan(4),()=>{atomicStore(density.element(instanceIndex.add(16384)),uint(0));});
     If(instanceIndex.lessThan(2),()=>{atomicStore(counters.element(instanceIndex.add(CROWD_COUNTERS.alive)),uint(0));});
   })().compute(128 * 128);
 
@@ -118,7 +119,33 @@ export function createKernels(h) {
     });
 
     const guard=id.div(uint(9)).mod(uint(encounterRings.stride)).equal(uint(0));
-    If(streaming.greaterThan(.5).and(guard.not()).and(length(a.xz.sub(goal.xz)).greaterThan(localCrowdRecycleDistance)).and(viewEnabled.lessThan(.5).or(outsideView(a.xyz,viewProjection))),()=>{
+    // A full living pool can still answer a mission alarm. Recruits keep their
+    // exact health/type/seed and never count as kills, scrap or dead recycling.
+    const selectedRecruit=id.add(uint(h.count)).sub(uint(pressureScan.x)).mod(uint(h.count)).lessThan(uint(pressureScan.y));
+    const canRecruit=recruitmentEligible(guard,s.x,s.w,v.w,s.z,time,length(a.xz.sub(goal.xz)),length(a.xz.sub(pressureOrigin)),outsideView(a.xyz,viewProjection).not(),viewEnabled.greaterThan(.5));
+    const outsideBlast=blast.w.lessThanEqual(0).or(length(a.xyz.sub(blast.xyz)).greaterThan(blast.w.add(4)));
+    If(streaming.greaterThan(.5).and(pressureRecruit.greaterThan(0)).and(selectedRecruit).and(canRecruit).and(outsideBlast),()=>{
+      // Its own ticket counter limits recruitment independently of replacement.
+      // CPU issuance guarantees both budgets together are at most maxPerStep.
+      const ticket=atomicAdd(density.element(16387),uint(1)).toVar();
+      If(ticket.lessThan(uint(pressureRecruit)),()=>{
+        Loop({start:uint(0),end:uint(16),type:'uint'},({i:attempt})=>{
+          const q=reinforcementPosition(id,attempt,pressureOrigin,uint(pressureScan.w)).toVar();
+          const point=vec3(q.x,ground(q),q.y).toVar();
+          If(inside(q).and(length(q.sub(goal.xz)).greaterThan(CROWD_PRESSURE.spawnClearance))
+            .and(flow.element(cellIndex(q)).w.lessThan(.5))
+            .and(atomicLoad(density.element(cellIndex(q))).lessThan(4))
+            .and(outsideView(point,viewProjection)),()=>{
+            const heading=atan(q.x.sub(goal.x),q.y.sub(goal.z));
+            pos.element(id).assign(vec4(point,heading));old.element(id).assign(vec4(point,heading));vel.element(id).assign(vec4(0));
+            If(length(q.sub(goal.xz)).lessThanEqual(CROWD_PRESSURE.nearbyRadius),()=>{atomicAdd(counters.element(CROWD_COUNTERS.nearby),uint(1));});
+            Return();
+          });
+        });
+      });
+    });
+    const disengaged=v.w.lessThanEqual(0).and(time.greaterThanEqual(s.z.add(CROWD_PRESSURE.recruitHitGrace))).and(outsideBlast);
+    If(streaming.greaterThan(.5).and(guard.not()).and(disengaged).and(length(a.xz.sub(goal.xz)).greaterThan(localCrowdRecycleDistance)).and(viewEnabled.lessThan(.5).or(outsideView(a.xyz,viewProjection))),()=>{
       // Choose only unoccupied navigation cells outside the current camera.
       // The same ID keeps its existing state, health and speed seed.
       Loop({start:uint(0),end:uint(16),type:'uint'},({i:attempt})=>{
