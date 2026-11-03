@@ -251,7 +251,7 @@ export function createKernels(h) {
       const distance=length(center.sub(point).mul(vec3(1,.4,1)));
       If(body.w.greaterThan(3).and(distance.lessThan(2+skim*2.2)).and(abs(center.y.sub(point.y)).lessThan(3)),()=>{
         damage.addAssign(max(35,body.w.mul(8+skim*6)));
-        impulse.addAssign(normalize(travel.add(vec3(.001,0,0))).mul(body.w).mul(.75).add(vec3(0,5+skim*5,0)));
+        impulse.addAssign(normalize(travel.add(vec3(.001,0,0))).mul(body.w).mul(.70).add(normalize(vec3(center.x.sub(point.x),.2,center.z.sub(point.z)).add(.001)).mul(min(body.w.mul(.17),9))).add(vec3(0,float(5+skim*5).add(min(body.w.mul(.10),6)),0)));
         cause.assign(uint(killCause));atomicAdd(counters.element(contactCounter),uint(1));s.z.assign(time.add(.1));
       });
     }

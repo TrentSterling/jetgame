@@ -7,6 +7,7 @@ import {validFlightControl} from './flight-control.js';
 import {validAircraftSystems} from './aircraft-systems.js';
 import {CROWD_COUNTER_COUNT,migrateCrowdCheckpoint} from './crowd-save-migration.js';
 import {validEquipment,restoreEquipment} from './progression.js';
+import {validVehicleDamage} from './vehicle-impact.js';
 export const SAVE_SCHEMA=1,WORLD_VERSION='expeditions-1';
 const bodyData=body=>Object.fromEntries(Object.entries(body).filter(([k,v])=>k==='pos'||['number','boolean','string'].includes(typeof v)).map(([k,v])=>[k,k==='pos'?v.toArray():v]));
 const setBody=(body,data)=>{for(const [k,v] of Object.entries(data))if(k==='pos')body.pos.fromArray(v);else body[k]=v;};
@@ -26,6 +27,7 @@ export function validateCheckpoint(s,count){
  if(!validEquipment(s.upgrades.equipment))bad('missile equipment');
  if(!s.fleet||!Array.isArray(s.fleet.bodies)||s.fleet.bodies.length>100000||!s.fleet.bodies.every(b=>bodyValid(b)&&typeof b.fleetId==='string'&&['buggy','scout','carrier','jet'].includes(b.kind)))bad('vehicles');
  const ids=new Set(s.fleet.bodies.map(b=>b.fleetId));
+ if(!s.fleet.bodies.every(validVehicleDamage))bad('vehicle deformation');
  if(!s.fleet.bodies.every(b=>b.kind!=='jet'||validFlightControl(b)&&validAircraftSystems(b)))bad('flight response');
  if(ids.size!==s.fleet.bodies.length||!['car','jet'].every(k=>ids.has(s.fleet.active?.[k]))||!ids.has('starter-buggy')||!ids.has('starter-jet'))bad('vehicle selection');
  if(!s.fleet.bodies.some(b=>b.fleetId===s.fleet.active.jet&&b.kind==='jet')||!s.fleet.bodies.some(b=>b.fleetId===s.fleet.active.car&&b.kind!=='jet'))bad('vehicle type');
