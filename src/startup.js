@@ -1,9 +1,6 @@
 // Keep the first failure, stop further submissions, and expose phase timings to
 // browser tests. A failed backend must never become an enabled Play button.
-export function startupUI(renderer) {
-  const button = document.getElementById('play');
-  const gate = document.getElementById('gate');
-  const hint = gate.querySelector('div');
+export function startupUI(renderer, {onChange=()=>{}}={}) {
   const state = window.HordeStartup = {phase:'Loading',ready:false,failed:false,phases:[],errors:[]};
   let device;
   const fail = error => {
@@ -14,17 +11,16 @@ export function startupUI(renderer) {
     state.ready = false;
     window.bootError = message;
     renderer.setAnimationLoop(null);
-    gate.hidden = false;
-    button.disabled = false;
-    button.textContent = 'Startup failed · Click to reload';
-    hint.textContent = message.split('\n').find(line => line.trim())?.slice(0,150) || 'GPU error';
-    hint.title = message;
+    state.error = message.split('\n').find(line => line.trim())?.slice(0,150) || 'GPU error';
+    // Notify the CPU UI state, but never submit more work to a failed device.
+    // A GPU-only interface cannot draw an error when its GPU has been lost.
+    onChange(state);
     console.error(error?.stack||error);
   };
   const phase = async (label, work, validate=false) => {
     if (state.failed) throw new Error(window.bootError);
     state.phase = label;
-    button.textContent = label+'…';
+    onChange(state);
     await new Promise(resolve => setTimeout(resolve,0));
     const start = performance.now();
     if (validate) device.pushErrorScope('validation');
@@ -53,9 +49,7 @@ export function startupUI(renderer) {
       state.ready = true;
       state.phase = 'Ready';
       state.readyMs = Math.round(performance.now());
-      button.disabled = false;
-      button.textContent = 'Enter battlefield';
-      hint.textContent = 'WASD + mouse · Click to capture cursor';
+      onChange(state);
     },
   };
 }
