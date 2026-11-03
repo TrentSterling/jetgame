@@ -1,0 +1,44 @@
+name: Stage jet gun cone
+on:
+  push:
+    branches: [release/jet-gun-cone-20261103]
+permissions:
+  contents: write
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply only the qualified main module change
+        run: |
+          python3 - <<'PY'
+          import pathlib,hashlib
+          p=pathlib.Path('src/main.js');s=p.read_text()
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=='f29de6ec39d821dea21144284312501585b91be985949c690404c345c653f66c'
+          needle=" shot.origin.set(origin.x,origin.y,origin.z,damage);const count=mode==='jet'?6:1;\n"
+          setup="\n".join([
+              ' // A filled circular cone around the barrel, not a horizontal fan with world-down bias.',
+              ' // Share a rotating six-sector pattern per salvo so short bursts cover both axes.',
+              " const coneSide=mode==='jet'?new T.Vector3(Math.cos(plane.yaw),0,-Math.sin(plane.yaw)).applyAxisAngle(dir,-plane.roll):null;",
+              " const coneUp=mode==='jet'?new T.Vector3().crossVectors(coneSide,dir).normalize():null;",
+              " const conePhase=mode==='jet'?Math.random()*Math.PI*2:0;",''])
+          old="  const d=dir.clone();if(mode==='jet'){const side=new T.Vector3(Math.cos(plane.yaw),0,-Math.sin(plane.yaw)),spread=(i-2.5)*.031+(Math.random()-.5)*.017;d.addScaledVector(side,spread);d.y-=.016+Math.random()*.04;d.normalize();}"
+          new="  const d=dir.clone();if(mode==='jet'){const angle=conePhase+i*Math.PI/3,radius=.085*Math.sqrt(Math.random());d.addScaledVector(coneSide,Math.cos(angle)*radius).addScaledVector(coneUp,Math.sin(angle)*radius).normalize();}"
+          assert s.count(needle)==1 and s.count(old)==1
+          s=s.replace(needle,needle+setup).replace(old,new).replace("version:'0.14.0'","version:'0.14.1'")
+          assert hashlib.sha256(s.encode()).hexdigest()=='c97eacdb0a8859170b879be0a84b74c541dc1272def57965f812907911d981c9'
+          p.write_text(s)
+          PY
+          node --check src/main.js
+          git diff --check
+          test "$(git diff --name-only)" = src/main.js
+          git rm .github/workflows/stage-jet-gun-cone.yml
+          git add src/main.js
+          git config user.name 'Jet Game release bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Stage v0.14.1 round cannon spread, preserving cadence, damage and vehicle behavior'
+          git push origin HEAD:refs/heads/release/jet-gun-cone-20261103
