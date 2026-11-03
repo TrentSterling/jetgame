@@ -1,6 +1,11 @@
 import {slideMove} from './collision.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const blend=(a,b,k,dt)=>a+(b-a)*(1-Math.exp(-k*dt));
+// Contact has a small, explicit compliance band. Ground may push the chassis
+// up; it cannot pull a ballistic trajectory down across a crest. The band
+// absorbs ordinary seams, while the positive acceleration limit prevents a
+// tiny height step from becoming an artificial upward launch impulse.
+export const DRIVING_CONTACT=Object.freeze({gravity:20,releaseClearance:.045,maxSupportAcceleration:80});
 // Arcade forces with finite tire grip. A vehicle can point across its travel
 // direction; steering cannot rotate its velocity or cancel a slide instantly.
 const handling={
@@ -18,7 +23,7 @@ export function drivingSteeringAngle(body,speed){
  return steer*(handling[body.kind]||handling.buggy).steering/(1+magnitude*magnitude/650);
 }
 export function resetDriving(car){
- Object.assign(car,{vx:-Math.sin(car.yaw)*car.speed,vz:-Math.cos(car.yaw)*car.speed,vy:0,steer:0,yawRate:0,slip:0,roll:0,pitch:0,driveRollV:0,drivePitchV:0,lateralAcceleration:0,longitudinalAcceleration:0,suspension:0,suspensionV:0,grounded:true,airTime:0,lastAirTime:0,landingSpeed:0,wallContact:false,_speed:car.speed,_x:car.pos.x,_z:car.pos.z});
+ Object.assign(car,{vx:-Math.sin(car.yaw)*car.speed,vz:-Math.cos(car.yaw)*car.speed,vy:0,steer:0,yawRate:0,slip:0,roll:0,pitch:0,driveRollV:0,drivePitchV:0,lateralAcceleration:0,longitudinalAcceleration:0,suspension:0,suspensionV:0,grounded:true,airTime:0,lastAirTime:0,landingSpeed:0,wallContact:false,_contactPrimed:false,_contactY:car.pos.y,_contactVy:0,_contactAge:0,_speed:car.speed,_x:car.pos.x,_z:car.pos.z});
 }
 export function stepDriving(car,dt,input,ground,boxes){
  if(!Number.isFinite(dt)||dt<=0)return {impactSpeed:0,landingSpeed:0,collision:{hit:false,dx:0,dz:0,blockedX:false,blockedZ:false}};
@@ -93,13 +98,36 @@ function driveStep(car,dt,input,ground,boxes){
  const stepRise=newFloor-floor-grade*travel;
  if(newFloor-oldY>.6&&stepRise>.55){car.pos.x=oldX;car.pos.z=oldZ;newFloor=floor;impactSpeed=Math.max(impactSpeed,speed);car.vx=car.vz=0;collision.hit=true;}
  const rise=(newFloor-floor)/dt;
- if(wasGrounded&&newFloor>=oldY-.6){car.pos.y=newFloor;car.vy=rise;car.airTime=0;}
+ if(wasGrounded){
+  // A newly placed/restored grounded body starts tangent to its actual route,
+  // including a constant downhill grade. Do not invent a drop on first update.
+  if(!car._contactPrimed||!Number.isFinite(car._contactY)||!Number.isFinite(car._contactVy)){
+   car._contactY=oldY;car._contactVy=grade*travel/dt;car._contactAge=0;car._contactPrimed=true;
+  }
+  const freeY=car._contactY+car._contactVy*dt-.5*DRIVING_CONTACT.gravity*dt*dt;
+  const freeVy=car._contactVy-DRIVING_CONTACT.gravity*dt;
+  if(freeY>newFloor+DRIVING_CONTACT.releaseClearance){
+   car.pos.y=freeY;car.vy=freeVy;car.airTime=car._contactAge+dt;car.grounded=false;
+  }else{
+   car.pos.y=newFloor;car.vy=rise;car.airTime=0;
+   if(freeY<=newFloor){
+    car._contactY=newFloor;
+    car._contactVy=Math.min(rise,car._contactVy+DRIVING_CONTACT.maxSupportAcceleration*dt);
+    car._contactAge=0;
+   }else{
+    // Carry the unsupported trajectory through the compliance band. Resetting
+    // vy to the surface delta here was the source of terrain adhesion.
+    car._contactY=freeY;car._contactVy=freeVy;car._contactAge+=dt;
+   }
+  }
+ }
  else{
-  car.vy-=dt*20;car.pos.y+=car.vy*dt;car.airTime+=dt;
+  car.vy-=dt*DRIVING_CONTACT.gravity;car.pos.y+=car.vy*dt;car.airTime+=dt;
   if(car.pos.y<=newFloor){
    const nx=(ground(car.pos.x+.4,car.pos.z)-ground(car.pos.x-.4,car.pos.z))/.8,nz=(ground(car.pos.x,car.pos.z+.4)-ground(car.pos.x,car.pos.z-.4))/.8;
    car.landingSpeed=Math.max(0,(nx*car.vx+nz*car.vz-car.vy)/Math.hypot(nx,1,nz));car.lastAirTime=car.airTime;car.airTime=0;car.pos.y=newFloor;car.vy=nx*car.vx+nz*car.vz;
    car.suspensionV-=Math.min(5,car.landingSpeed*.35);car.grounded=true;
+   car._contactY=newFloor;car._contactVy=car.vy;car._contactAge=0;car._contactPrimed=true;
   }else car.grounded=false;
  }
  // Use resolved momentum, after speed limits and contacts, for weight transfer.

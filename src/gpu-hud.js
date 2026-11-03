@@ -11,12 +11,12 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),finite=(n,f=0)=>Number.isFinite(n
 const distanceLabel=n=>n>=1000?(n/1000).toFixed(1)+' KM':Math.round(Math.max(0,n))+' M';
 const linear=hex=>{const color=new T.Color(hex);return Object.freeze([color.r,color.g,color.b]);};
 export const HUD_COLORS=Object.freeze({ink:linear('#f7f1dc'),muted:linear('#a8babd'),amber:linear('#ffc46b'),cyan:linear('#7fe3db'),red:linear('#ff7966'),dark:linear('#071419'),panel:linear('#10242b'),edge:linear('#38545a')});
-const fields={screen:'game',mode:'foot',modeLabel:'',health:100,shielded:false,ammo:32,ammoMax:32,ammoSuffix:'/ ∞',weapon:'CARBINE',speed:0,altitude:0,missiles:0,bombs:0,boost:1,boosting:false,boostLocked:false,reload:0,mission:'FIND SURVIVORS',missionDetail:'',action:'',actionKey:'',seatAction:'',interactionProgress:0,message:'',hit:0,damage:0,kills:0,rescued:0,relays:0,scrap:0,respawnMode:'foot',respawnSeconds:0,ready:false,deployAvailable:false,keyboardOnly:false,progress:0,phase:'BUILDING BATTLEFIELD',phaseDetail:'Preparing the world, vehicles and survivors before you enter.',phaseIndex:0,phaseCount:0,sceneFade:0,error:'',saveStatus:'LOCAL EXPEDITION CHECKPOINTS',saveAvailable:true,continuing:false,muted:false,version:'0.9.0'};
+const fields={screen:'game',mode:'foot',modeLabel:'',health:100,shielded:false,ammo:32,ammoMax:32,ammoSuffix:'/ ∞',weapon:'CARBINE',speed:0,altitude:0,missiles:0,bombs:0,missileWarhead:'standard',boost:1,boosting:false,boostLocked:false,reload:0,mission:'FIND SURVIVORS',missionDetail:'',action:'',actionKey:'',seatAction:'',interactionProgress:0,message:'',hit:0,damage:0,kills:0,rescued:0,relays:0,scrap:0,respawnMode:'foot',respawnSeconds:0,ready:false,deployAvailable:false,keyboardOnly:false,progress:0,phase:'BUILDING BATTLEFIELD',phaseDetail:'Preparing the world, vehicles and survivors before you enter.',phaseIndex:0,phaseCount:0,sceneFade:0,error:'',saveStatus:'LOCAL EXPEDITION CHECKPOINTS',saveAvailable:true,continuing:false,muted:false,version:'0.9.0'};
 const reticleFields={x:0,y:0};
 const waypointFields={x:0,y:0,label:'SURVIVORS',distance:0,behind:false,inView:null,bearing:0,direction:'',turnDegrees:0};
 const aimFields={x:0,y:0,strength:0,locked:false};
 const jetFields={commandX:0,commandY:0,noseX:0,noseY:0,limited:false,limitLabel:'',recovery:false,throttle:0};
-const upgradeFields={id:'',key:'',name:'',level:0,cost:0,detail:'',available:false};
+const upgradeFields={id:'',key:'',name:'',level:0,cost:0,detail:'',available:false,equipped:false};
 const fieldKeys=Object.keys(fields),upgradeKeys=Object.keys(upgradeFields);
 const groups=Object.entries({reticle:reticleFields,waypoint:waypointFields,aim:aimFields,jet:jetFields}).map(([name,defaults])=>({name,defaults,keys:Object.keys(defaults)}));
 const emptyInput=Object.freeze({});
@@ -31,7 +31,7 @@ const shapeDistance=wgslFn(`fn hudShapeDistance(p:vec2f,size:vec2f,corner:f32,bo
 /**
  * CSS-pixel viewport. update(state) accepts optional primitive fields in
  * `fields` above, plus waypoint/aim screen NDC (+Y up), jet command offsets
- * (-1..1,+Y up), and at most three upgrades. Reuse/mutate state safely.
+  * (-1..1,+Y up), and at most four upgrades. Reuse/mutate state safely.
  * hitTest returns an action string or null; it never triggers game actions.
  * The caller renders the world first, then render(renderer) on that canvas.
  */
@@ -55,7 +55,7 @@ export class GpuHUD{
   this.material.positionNode=vec3(rect.x.add(local.x.mul(rotation.x).sub(local.y.mul(rotation.y))),rect.y.add(local.x.mul(rotation.y).add(local.y.mul(rotation.x))),0);
   this.material.colorNode=ink.rgb;this.material.opacityNode=smoothstep(aa.negate(),aa,distance).oneMinus().mul(ink.a);
   this.mesh=new T.Mesh(this.geometry,this.material);this.mesh.name='GPU glyphs and HUD shapes';this.mesh.frustumCulled=false;this.mesh.renderOrder=10000;this.scene.add(this.mesh);
-  this.state={...fields,reticle:{...reticleFields},waypoint:{...waypointFields},aim:{...aimFields},jet:{...jetFields},upgrades:Array.from({length:3},()=>({...upgradeFields})),reticleVisible:false,waypointVisible:false,aimVisible:false,jetVisible:false,upgradeCount:0};
+  this.state={...fields,reticle:{...reticleFields},waypoint:{...waypointFields},aim:{...aimFields},jet:{...jetFields},upgrades:Array.from({length:4},()=>({...upgradeFields})),reticleVisible:false,waypointVisible:false,aimVisible:false,jetVisible:false,upgradeCount:0};
   this.regions=Array.from({length:GPU_HUD_MAX_HITS},()=>({x:0,y:0,w:0,h:0,action:'',disabled:false}));
   this.texts=Array.from({length:64},()=>({text:'',x:0,y:0,width:0,height:0}));
   this.points={reticle:{x:0,y:0,visible:false},aim:{x:0,y:0,visible:false},command:{x:0,y:0,visible:false},nose:{x:0,y:0,visible:false},waypoint:{x:0,y:0,visible:false},objectiveCue:{x:0,y:0,visible:false}};
@@ -76,7 +76,7 @@ export class GpuHUD{
    const source=input[name],visible=source!=null&&source!==false,key=name+'Visible';if(state[key]!==visible){state[key]=visible;changed=true;}
    for(const field of keys){const value=source?.[field]??defaults[field];if(!Object.is(state[name][field],value)){state[name][field]=value;changed=true;}}
   }
-  const upgrades=input.upgrades,count=Math.min(3,upgrades?.length||0);if(count!==state.upgradeCount){state.upgradeCount=count;changed=true;}
+  const upgrades=input.upgrades,count=Math.min(4,upgrades?.length||0);if(count!==state.upgradeCount){state.upgradeCount=count;changed=true;}
   for(let i=0;i<count;i++)for(const key of upgradeKeys){const value=upgrades[i][key]??upgradeFields[key];if(!Object.is(state.upgrades[i][key],value)){state.upgrades[i][key]=value;changed=true;}}
   if(changed)this.dirty=true;if(this.dirty)this._build();return changed;
  }
@@ -165,38 +165,86 @@ export class GpuHUD{
   if(reloading)this._bar(108,94,80,s.reload,c.cyan);else if(isFoot)this._text(s.ammoSuffix||'/ '+s.ammoMax,108,93,10,c.muted,'center',85);else this._text('KM/H',108,93,10,c.muted,'center',85);
   const resource=clamp(finite(s.boost,1),0,1),resourceColor=s.boostLocked?c.amber:s.boosting?c.cyan:c.muted;
   this._bar(0,79,64,resource,resourceColor);this._text(isFoot?'STAMINA':s.boostLocked?'RELEASE SHIFT':s.boosting?'BOOST':'SHIFT',0,93,9,resourceColor,'center',105);
-  if(!isFoot)this._text('RMB '+finite(s.missiles)+(isJet?' / SPACE '+finite(s.bombs):' MISSILES'),0,115,11,c.muted,'center',270);
+  if(!isFoot)this._text('RMB '+finite(s.missiles)+(s.missileWarhead==='cluster'?' CLUSTER':' MISSILES')+(isJet?' / SPACE '+finite(s.bombs):''),0,115,11,c.muted,'center',290);
   if(isJet)this._text(Math.round(finite(s.altitude))+' M',0,57,10,c.muted,'center',90);
-  if(s.action){const y=isFoot?119:141;this._text((s.actionKey?s.actionKey+'  ':'')+s.action,0,y,13,c.cyan,'center',390);if(s.interactionProgress>0)this._bar(0,y+22,150,s.interactionProgress,c.cyan);}else if(!s.message)this._text('H CONTROLS  /  ESC PAUSE',0,isFoot?119:141,9,c.muted,'center',300,.7);
-  if(s.seatAction)this._text('Q  '+s.seatAction,0,isFoot?145:167,11,c.amber,'center',350);
-  if(s.aimVisible)this._aim();if(isJet&&s.jetVisible)this._jet();if(s.waypointVisible)this._waypoint();
+  const edge=s.waypointVisible?this._waypointEdge():null,actionRows=[];
+  if(s.aimVisible)this._aim();if(isJet&&s.jetVisible)this._jet();
+  if(s.action)this._actionRow((s.actionKey?s.actionKey+'  ':'')+s.action,isFoot?119:141,13,c.cyan,390,edge,actionRows,s.interactionProgress);
+  else if(!s.message){
+   const hint='H CONTROLS  /  ESC PAUSE',y=isFoot?119:141,w=hudTextWidth(hint,9);
+   // This optional reminder yields to a real objective at the compact edge.
+   if(!edge||edge.right<-w/2-2||edge.left>w/2+2||edge.bottom<y-2||edge.top>y+11)this._text(hint,0,y,9,c.muted,'center',300,.7);
+  }
+  if(s.seatAction)this._actionRow('Q  '+s.seatAction,isFoot?145:167,11,c.amber,350,edge,actionRows);
+  if(s.waypointVisible)this._waypoint(edge,actionRows);
  }
  _missionBand(rx,ry){
-  const state=this.state,base=(state.mode==='foot'?-107:-167)-(state.waypointVisible?60:0),bottom=state.waypointVisible?87:35;let ceiling=Math.abs(rx)<230?ry-40:Infinity;
+  const state=this.state,base=state.mode==='foot'?-107:-167,bottom=35,protectedY=Math.abs(rx)<230?[ry]:[];let ceiling=Math.abs(rx)<230?ry-40:Infinity;
   if(state.aimVisible&&(state.aim.locked||state.aim.strength>0)){
    const x=clamp(finite(state.aim.x),-.95,.95)*this.width/(2*this.scale),y=-clamp(finite(state.aim.y),-.95,.95)*this.height/(2*this.scale);
-   if(Math.abs(x)<230)ceiling=Math.min(ceiling,y-40);
+   if(Math.abs(x)<230){ceiling=Math.min(ceiling,y-40);protectedY.push(y);}
   }
   // 48-unit steps with a 14-unit return margin keep small camera movement
   // from making mission text follow or oscillate around the physical sight.
-  const wanted=base-48*Math.max(0,Math.ceil((base+bottom-ceiling)/48));
-  if(this.missionMode!==state.mode){this.missionMode=state.mode;this.missionY=wanted;}
+  let wanted=base-48*Math.max(0,Math.ceil((base+bottom-ceiling)/48));
+  const top=-this.cy/this.scale+18,below=wanted<top;
+  if(below){
+   // A steep aircraft sight can occupy the top margin on compact screens.
+   // Find the first clear band below it instead of clamping text onto the aim.
+   wanted=top;for(const y of protectedY.sort((a,b)=>a-b))if(wanted+bottom>y-40&&wanted<y+40)wanted=y+40;
+  }
+  if(this.missionMode!==state.mode||below){this.missionMode=state.mode;this.missionY=wanted;}
   else if(wanted<this.missionY||wanted>this.missionY&&wanted+bottom<ceiling-14)this.missionY=wanted;
-  this.missionY=Math.max(-this.cy/this.scale+18,this.missionY);
+  this.missionY=Math.max(top,this.missionY);
  }
- _waypoint(){
-  const p=this.state.waypoint,c=HUD_COLORS,inView=p.inView==null?!p.behind&&Math.abs(p.x)<=1&&Math.abs(p.y)<=1:p.inView;
-  let direction=p.direction||(p.behind?'behind':inView?'ahead':p.x<-.05?'left':p.x>.05?'right':p.y>0?'above':'below');
-  const compact=this.missionY<=-this.cy/this.scale+18.01,label=p.label||'OBJECTIVE',distance=distanceLabel(finite(p.distance)),cueY=this.missionY+(compact?53:66),cueHeight=compact?34:43;
-  this._rect(0,cueY,354,cueHeight,c.dark,.76,5);this._rect(0,cueY,354,cueHeight,c.amber,.3,5,1);
-  const angle=direction==='left'?-Math.PI/2:direction==='right'?Math.PI/2:direction==='behind'?Math.PI:direction==='below'?Math.PI:0;
-  const ax=-155,ay=cueY,cs=Math.cos(angle),sn=Math.sin(angle),rotate=(x,y)=>[ax+x*cs-y*sn,ay+x*sn+y*cs];
-  const a=rotate(-6,2),b=rotate(0,-5),d=rotate(6,2);this._line(...a,...b,2.6,c.amber);this._line(...b,...d,2.6,c.amber);
-  if(direction==='behind'){const e=rotate(-6,9),f=rotate(0,2),g=rotate(6,9);this._line(...e,...f,2,c.amber);this._line(...f,...g,2,c.amber);}
-  this._point('objectiveCue',ax,ay);
-  const instruction={ahead:'OBJECTIVE AHEAD',left:'TURN LEFT',right:'TURN RIGHT',behind:'TURN AROUND',above:'LOOK UP',below:'LOOK DOWN'}[direction]||'OBJECTIVE AHEAD';
-  this._text(instruction,-132,cueY-(compact?13:14),11,c.amber,'left',298);this._text(label+'  ·  '+distance,-132,cueY+(compact?3:5),11,c.ink,'left',298);
-  if(!inView)return;
+ _waypointEdge(){
+  const p=this.state.waypoint,inView=p.inView==null?!p.behind&&Math.abs(p.x)<=1&&Math.abs(p.y)<=1:p.inView;if(inView)return null;
+  const halfW=this.cx/this.scale,halfH=this.cy/this.scale;
+  let dx=p.behind?Math.sin(finite(p.bearing,Math.PI)):finite(p.x)*halfW,dy=p.behind?-Math.cos(finite(p.bearing,Math.PI)):-finite(p.y)*halfH;
+  if(Math.hypot(dx,dy)<.01){dx=p.direction==='left'?-1:p.direction==='right'?1:0;dy=dx?0:p.behind||p.direction==='below'?1:-1;}
+  const mx=Math.max(8,halfW-26),my=Math.max(8,halfH-30),k=1/Math.max(Math.abs(dx)/mx,Math.abs(dy)/my),x=dx*k,y=dy*k,n=Math.hypot(dx,dy),ux=dx/n,uy=dy/n;
+  // Include the diamond outline and outward chevron, with their stroke fringe.
+  return {halfW,halfH,x,y,ux,uy,left:Math.min(x-10,x+ux*11-Math.abs(uy)*4-2,x+ux*16-2),right:Math.max(x+10,x+ux*11+Math.abs(uy)*4+2,x+ux*16+2),top:Math.min(y-10,y+uy*11-Math.abs(ux)*4-2,y+uy*16-2),bottom:Math.max(y+10,y+uy*11+Math.abs(ux)*4+2,y+uy*16+2)};
+ }
+ _edgeBoxClear(cx,cy,w,h,edge,actionRows){
+  const l=cx-w/2,r=cx+w/2,t=cy-h/2,b=cy+h/2,{halfW,halfH}=edge;
+  if(l<-halfW+8||r>halfW-8||t<-halfH+8||b>halfH-8)return false;
+  const hits=(left,top,right,bottom,pad=4)=>l<right+pad&&r>left-pad&&t<bottom+pad&&b>top-pad;
+  if(hits(edge.left,edge.top,edge.right,edge.bottom))return false;
+  for(let i=0;i<this.textCount;i++){const text=this.texts[i],x=(text.x-this.cx)/this.scale,y=(text.y-this.cy)/this.scale;if(hits(x,y,x+text.width/this.scale,y+text.height/this.scale,6))return false;}
+  for(const row of actionRows)if(hits(row.x-row.w/2,row.y,row.x+row.w/2,row.y+row.h))return false;
+  for(const [x,y,width] of [[-108,94,80],[108,94,80],[0,79,64]])if(hits(x-width/2,y-2,x+width/2,y+2))return false;
+  for(const name of ['reticle','aim','command','nose']){const point=this.points[name];if(point.visible){const x=(point.x-this.cx)/this.scale,y=(point.y-this.cy)/this.scale,radius=name==='reticle'&&this.state.damage>0?36:name==='aim'?31:24;if(hits(x-radius,y-radius,x+radius,y+radius,0))return false;}}
+  return true;
+ }
+ _actionRow(text,y,size,color,maxWidth,edge,rows,progress=0){
+  const w=Math.max(Math.min(maxWidth,hudTextWidth(text,size)),progress>0?150:0),h=progress>0?24:size;let x=0,top=y;
+  if(edge&&!this._edgeBoxClear(x,top+h/2,w,h,edge,rows)){
+   // Protect the action, moving its row only when the exact edge pin or the
+   // compact viewport occupies it. Prefer a small sideways move at this row.
+   const left=edge.left-w/2-8,right=edge.right+w/2+8;
+   search:for(let step=0;step<12;step++)for(const candidate of step===0?[left,right]:[0,left,right]){
+    const rowY=Math.min(y-step*28,edge.halfH-h-8);
+    if(this._edgeBoxClear(candidate,rowY+h/2,w,h,edge,rows)){x=candidate;top=rowY;break search;}
+   }
+  }
+  this._text(text,x,top,size,color,'center',maxWidth);if(progress>0)this._bar(x,top+22,150,progress,color);rows.push({x,y:top,w,h});
+ }
+ _waypoint(edge=this._waypointEdge(),actionRows=[]){
+  const p=this.state.waypoint,c=HUD_COLORS,label=p.label||'OBJECTIVE',distance=distanceLabel(finite(p.distance));
+  if(edge){
+   // Keep an offscreen objective at the view edge, clear of the central sight.
+   // The diamond and distance replace the old ahead/behind instruction banner.
+   const {halfW,halfH,x,y,ux,uy}=edge;
+   this._point('objectiveCue',x,y);this._diamond(x,y,7,c.dark,1,4.2);this._diamond(x,y,7,c.amber,1,2);
+   this._line(x+ux*11-uy*4,y+uy*11+ux*4,x+ux*16,y+uy*16,1.6,c.amber);this._line(x+ux*16,y+uy*16,x+ux*11+uy*4,y+uy*11-ux*4,1.6,c.amber);
+   const horizontal=Math.abs(y)>=halfH-30-.01,edgeX=Math.sign(x)*(halfW-46),edgeY=Math.sign(y)*(halfH-18),inwardX=clamp(x-ux*47,-halfW+46,halfW-46),inwardY=clamp(y-uy*24+5,-halfH+18,halfH-18);
+   const slots=[[inwardX,inwardY]];
+   for(const offset of [54,-54,104,-104,154,-154])slots.push(...(horizontal?[[x+offset,edgeY],[inwardX+offset,inwardY]]:[[edgeX,y+offset],[inwardX,inwardY+offset]]));
+   for(const [lx,ly] of slots)if(this._edgeBoxClear(lx,ly,76,20,edge,actionRows)){this._rect(lx,ly,76,20,c.dark,.72,3);this._text(distance,lx,ly-5,10,c.amber,'center',68);break;}
+   // Keep the exact edge pin even when every nearby label slot is occupied.
+   return;
+  }
   // The world pin stays exactly at the projected destination. Only its label
   // may move to remain legible, with a leader preserving the correspondence.
   const x=finite(p.x)*this.width/(2*this.scale),y=-finite(p.y)*this.height/(2*this.scale),halfW=this.cx/this.scale,halfH=this.cy/this.scale;
@@ -205,7 +253,6 @@ export class GpuHUD{
   let lx=clamp(x,-halfW+labelW/2+12,halfW-labelW/2-12),ly=clamp(y-27,-halfH+labelH/2+12,halfH-labelH/2-12);
   const clashes=(cx,cy)=>{
    const l=cx-labelW/2,r=cx+labelW/2,t=cy-labelH/2,b=cy+labelH/2;
-   if(l<183&&r>-183&&t<cueY+cueHeight/2+6&&b>cueY-cueHeight/2-6)return true;
    for(let i=0;i<this.textCount;i++){const text=this.texts[i],tx=(text.x-this.cx)/this.scale,ty=(text.y-this.cy)/this.scale;if(l<tx+text.width/this.scale+6&&r>tx-6&&t<ty+text.height/this.scale+6&&b>ty-6)return true;}
    for(const name of ['reticle','aim','command']){const point=this.points[name];if(point.visible){const px=(point.x-this.cx)/this.scale,py=(point.y-this.cy)/this.scale,radius=name==='reticle'&&this.state.damage>0?36:name==='aim'?31:24;if(l<px+radius&&r>px-radius&&t<py+radius&&b>py-radius)return true;}}
    return false;
@@ -215,8 +262,7 @@ export class GpuHUD{
    const candidates=[[x,y+30],[x+labelW/2+26,y],[x-labelW/2-26,y],[x,y-60],[x,y+60]];
    for(const candidate of candidates){const cx=clamp(candidate[0],-halfW+labelW/2+12,halfW-labelW/2-12),cy=clamp(candidate[1],-halfH+labelH/2+12,halfH-labelH/2-12);if(!clashes(cx,cy)){lx=cx;ly=cy;labelSafe=true;break;}}
   }
-  // The persistent cue already names this destination. If every nearby label
-  // slot is occupied, retain only the exact pin instead of covering combat UI.
+  // If every nearby label slot is occupied, retain the exact world pin.
   if(!labelSafe)return;
   const ex=clamp(x,lx-labelW/2,lx+labelW/2),ey=clamp(y,ly-labelH/2,ly+labelH/2),dx=ex-x,dy=ey-y,len=Math.hypot(dx,dy);
   if(len>9){this._line(x+dx*9/len,y+dy*9/len,ex,ey,2.6,c.dark,.8);this._line(x+dx*9/len,y+dy*9/len,ex,ey,1,c.amber,.85);}
@@ -270,8 +316,8 @@ export class GpuHUD{
  }
  _help(){
   const c=HUD_COLORS;this._text('FIELD CONTROLS',0,-225,24,c.ink,'center',500);
-  const rows=[['WASD','MOVE / DRIVE / THROTTLE'],['MOUSE','AIM / STEER JET'],['LMB','FIRE'],['RMB','SHOVE / VEHICLE MISSILES'],['SHIFT','SPRINT / BOOST / CHUTE DIVE'],['SPACE','JUMP / HANDBRAKE / BOMB'],['C / CTRL','CROUCH / SLIDE'],['JET: C','CENTER FLIGHT COMMAND'],['E','ENTER / EXIT / EJECT'],['Q','SWAP SEATS WITH ALLIED DRIVER'],['F HOLD','REPAIR SURVIVOR RADIO'],['R','RELOAD / DEPLOY'],['Z / X / V','RIFLE / TORQUE / BOMB UPGRADE']];
-  for(let i=0;i<rows.length;i++){const y=-172+i*25;this._text(rows[i][0],-249,y,11,c.cyan,'left',125);this._text(rows[i][1],-106,y,12,c.ink,'left',360);}
+  const rows=[['WASD','MOVE / DRIVE / THROTTLE'],['MOUSE','AIM / STEER JET'],['LMB','FIRE'],['RMB','SHOVE / VEHICLE MISSILES'],['SHIFT','SPRINT / BOOST / CHUTE DIVE'],['SPACE','JUMP / HANDBRAKE / BOMB'],['C / CTRL','CROUCH / SLIDE'],['JET: C','CENTER FLIGHT COMMAND'],['E','ENTER / EXIT / EJECT'],['Q','SWAP SEATS WITH ALLIED DRIVER'],['F HOLD','REPAIR SURVIVOR RADIO'],['R','RELOAD / DEPLOY'],['Z / X / V','RIFLE / TORQUE / BOMB UPGRADE'],['B','UNLOCK / EQUIP CLUSTER MISSILES']];
+  for(let i=0;i<rows.length;i++){const y=-172+i*23;this._text(rows[i][0],-249,y,11,c.cyan,'left',125);this._text(rows[i][1],-106,y,12,c.ink,'left',360);}
   this._text('IN AIR: SPACE OPENS OR CUTS THE PARACHUTE',0,168,11,c.muted,'center',500);this._text('AFTER DEFEAT: 1 / 2 / 3 CHOOSES YOUR INSERTION',0,192,10,c.muted,'center',510);
   this._button('back','BACK',0,251,220,42);
  }
@@ -279,9 +325,10 @@ export class GpuHUD{
   const s=this.state,c=HUD_COLORS;this._text('BUILD YOUR EDGE',0,-224,25,c.ink,'center',500);this._text(Math.floor(finite(s.scrap))+' SCRAP',0,-180,14,c.amber,'center',400);
   if(!s.upgradeCount){this._text('SALVAGE THE HORDE TO EARN UPGRADES',0,-30,15,c.muted,'center',500);}
   for(let i=0;i<s.upgradeCount;i++){
-   const u=s.upgrades[i],y=-112+i*108,max=finite(u.level)>=3;
-   this._rect(0,y+15,522,94,c.dark,.6,5);this._text(u.name,-242,y-18,17,c.ink,'left',310);this._text('LEVEL '+Math.min(3,Math.max(0,finite(u.level)))+' / 3',-242,y+8,10,c.amber,'left',265);this._text(u.detail,-242,y+31,11,c.muted,'left',315);
-   this._button('upgrade:'+u.id,max?'MAX':u.key+'  '+u.cost,183,y+10,120,46,{disabled:max||!u.available,accent:c.amber});
+   const u=s.upgrades[i],y=-126+i*88,equipment=u.id==='cluster',max=!equipment&&finite(u.level)>=3;
+   const status=equipment?(u.level?(u.equipped?'CLUSTER EQUIPPED':'STANDARD EQUIPPED'):'KILLS + RESCUES EARN SCRAP'):'LEVEL '+Math.min(3,Math.max(0,finite(u.level)))+' / 3';
+   this._rect(0,y+15,522,80,c.dark,.6,5);this._text(u.name,-242,y-14,15,c.ink,'left',310);this._text(status,-242,y+8,10,equipment&&u.equipped?c.cyan:c.amber,'left',265);this._text(u.detail,-242,y+28,10,c.muted,'left',315);
+   this._button('upgrade:'+u.id,max?'MAX':equipment&&u.level?'B SWAP':u.key+'  '+u.cost,183,y+10,120,44,{disabled:max||!u.available,accent:equipment?c.cyan:c.amber});
   }
   this._button('back','BACK',0,251,220,42);
  }

@@ -6,6 +6,7 @@ import {BOT_COUNTER_COUNT,LEGACY_COUNTER_COUNT,checkpointRegion,migrateBotCheckp
 import {validFlightControl} from './flight-control.js';
 import {validAircraftSystems} from './aircraft-systems.js';
 import {CROWD_COUNTER_COUNT,migrateCrowdCheckpoint} from './crowd-save-migration.js';
+import {validEquipment,restoreEquipment} from './progression.js';
 export const SAVE_SCHEMA=1,WORLD_VERSION='expeditions-1';
 const bodyData=body=>Object.fromEntries(Object.entries(body).filter(([k,v])=>k==='pos'||['number','boolean','string'].includes(typeof v)).map(([k,v])=>[k,k==='pos'?v.toArray():v]));
 const setBody=(body,data)=>{for(const [k,v] of Object.entries(data))if(k==='pos')body.pos.fromArray(v);else body[k]=v;};
@@ -22,6 +23,7 @@ export function validateCheckpoint(s,count){
  if(!runtimeNumbers.every(k=>finite(s.runtime[k]))||!['dead','won'].every(k=>typeof s.runtime[k]==='boolean'))bad('missing run values');
  if(s.runtime.hurtUntil!==undefined&&!finite(s.runtime.hurtUntil))bad('injury interruption');
  if(!s.upgrades||!modes.every(k=>Number.isInteger(s.upgrades.levels?.[k])&&s.upgrades.levels[k]>=0&&s.upgrades.levels[k]<=3)||!['earned','spent','rewards'].every(k=>finite(s.upgrades[k])&&s.upgrades[k]>=0))bad('upgrades');
+ if(!validEquipment(s.upgrades.equipment))bad('missile equipment');
  if(!s.fleet||!Array.isArray(s.fleet.bodies)||s.fleet.bodies.length>100000||!s.fleet.bodies.every(b=>bodyValid(b)&&typeof b.fleetId==='string'&&['buggy','scout','carrier','jet'].includes(b.kind)))bad('vehicles');
  const ids=new Set(s.fleet.bodies.map(b=>b.fleetId));
  if(!s.fleet.bodies.every(b=>b.kind!=='jet'||validFlightControl(b)&&validAircraftSystems(b)))bad('flight response');
@@ -47,6 +49,7 @@ export function validateCheckpoint(s,count){
   }
  }
  if(!s.combat||!['car','jet'].every(k=>finite(s.combat.ammo?.[k])&&finite(s.combat.reload?.[k])&&finite(s.combat.missileDelay?.[k]))||!['stamina','shoveDelay','recoverDelay','shoveAnimation','shoves','missilesFired'].every(k=>finite(s.combat[k])))bad('combat');
+ if(s.combat.rearmDebt!==undefined&&(!s.combat.rearmDebt||!['car','jet'].every(k=>finite(s.combat.rearmDebt[k])&&s.combat.rearmDebt[k]>=0&&s.combat.rearmDebt[k]<=60)))bad('missile rearm debt');
  if(s.defenses!==undefined&&(!s.defenses||s.defenses.version!==1||!Number.isInteger(s.defenses.rounds)||s.defenses.rounds<0||!Array.isArray(s.defenses.guns)||s.defenses.guns.length!==2||!s.defenses.guns.every(g=>Number.isInteger(g.shots)&&g.shots>=0&&finite(g.cooldown)&&g.cooldown>=0&&g.cooldown<=1)))bad('spawn defenses');
  if(!Array.isArray(s.broken)||s.broken.some(v=>!Number.isInteger(v)||v<0||v>=36))bad('scenery');
  for(const [key,length,Type] of [['pos',count*4,Float32Array],['state',count*4,Float32Array],['vel',count*4,Float32Array],['blood',count*12,Float32Array]]){
@@ -93,7 +96,7 @@ export class GameSave{
   const migration=migrateLegacySpawn(migrateBotCheckpoint(s));s=validateCheckpoint(migrateCrowdCheckpoint(migration.snapshot),horde.count);
   if(horde.counters.value.array.length!==CROWD_COUNTER_COUNT)bad('runtime counters');
   this.spawnMigration=migration.moved;
-  fleet.restore(s.fleet);setBody(player,s.player);Object.assign(upgrades,structuredClone(s.upgrades));Object.assign(combat,structuredClone(s.combat));
+  fleet.restore(s.fleet);setBody(player,s.player);Object.assign(upgrades,structuredClone(s.upgrades),{equipment:restoreEquipment(s.upgrades.equipment)});Object.assign(combat,structuredClone(s.combat),{rearmDebt:structuredClone(s.combat.rearmDebt??{car:0,jet:0})});
   for(const k of ['done','repaired','visited'])e[k]=new Set(s.expeditions[k]);
   for(const k of ['refuges','party','rescued','deliveries','progress','active'])e[k]=structuredClone(s.expeditions[k]);
   for(const site of e.sites.values())site.ready=e.repaired.has(site.id);
@@ -121,9 +124,12 @@ export class GameSave{
    tx.oncomplete=()=>resolve(record.revision);tx.onabort=()=>reject(failure||tx.error||Error('Save transaction aborted'));tx.onerror=()=>{};
   });
  }
- async save(){
+ async save({followup=false}={}){
   if(!this.enabled||this.blocked)return {saved:false,error:this.lastError||'Saving disabled'};
-  if(this.pending)return this.pending;
+  // Purchases/equipment changes may happen after an autosave has captured its
+  // CPU state. Request one coalesced follow-up transaction after that save so
+  // the new equipment and its payment reach the same subsequent checkpoint.
+  if(this.pending){if(!followup)return this.pending;return this.queued??=(this.pending.then(()=>{this.queued=null;return this.save();}));}
   this.lastAttempt=performance.now();this.status('Saving…');
   this.pending=(async()=>{try{const snapshot=await this.capture();this.revision=await this.commit(snapshot);this.savedAt=snapshot.savedAt;this.lastError=null;this.status('Saved · '+new Date(this.savedAt).toLocaleTimeString());return {saved:true,revision:this.revision,savedAt:this.savedAt};}catch(e){this.lastError=String(e);this.status('Save failed; previous checkpoint kept. '+e.message);return {saved:false,error:this.lastError};}finally{this.pending=null;}})();return this.pending;
  }

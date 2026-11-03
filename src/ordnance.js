@@ -3,6 +3,7 @@ import {height,terrainRayDistance} from './nav.js';
 import {segmentCapsuleFraction} from './combat-targets.js';
 
 export const MISSILE_TUNING=Object.freeze({capacity:24,launchSpeed:34,maxSpeed:155,acceleration:155,ignition:.1,turnRate:2.4,lifetime:5,trailInterval:.032,radius:.14,targetFuse:.55});
+export const CLUSTER_TUNING=Object.freeze({capacity:48,count:4,horizontalSpeed:12,verticalSpeed:10.5,gravity:26,lifetime:1.6,radius:.12,blastCar:5.4,blastJet:7,trailInterval:.055});
 const finitePoint=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z);
 
 // Missiles remain in world space when their pilot exits. Bounded projectiles,
@@ -14,17 +15,75 @@ export class Ordnance{
   this.geometry=new T.CylinderGeometry(.105,.14,1.1,7);this.geometry.rotateX(Math.PI/2);
   this.material=new T.MeshStandardMaterial({color:'#d8c8a0',roughness:.6});this.finGeometry=new T.BoxGeometry(.6,.045,.32);this.flameGeometry=new T.ConeGeometry(.17,.8,7);this.flameGeometry.rotateX(Math.PI/2);this.flameMaterial=new T.MeshBasicMaterial({color:'#ffc374'});
   this.pool=Array.from({length:MISSILE_TUNING.capacity},()=>{const m=new T.Mesh(this.geometry,this.material);const fin=new T.Mesh(this.finGeometry,this.material);fin.position.z=.35;m.add(fin);const cross=fin.clone();cross.rotation.z=Math.PI/2;m.add(cross);const fire=new T.Mesh(this.flameGeometry,this.flameMaterial);fire.position.z=.8;m.add(fire);m.userData.motor=fire;m.visible=false;scene.add(m);return m;});
+  // Four real ballistic children per cluster impact share one bounded opaque
+  // instance draw. Reset/reuse never allocates more scene objects or geometry.
+  this.bomblets=[];this.clusterBursts=this.bombletsLaunched=this.bombletImpacts=0;
+  this.bombletPool=Array.from({length:CLUSTER_TUNING.capacity},()=>({active:false,pos:new T.Vector3(),velocity:new T.Vector3(),age:0,trailAge:0,mode:'car'}));
+  this.bombletMesh=new T.InstancedMesh(new T.IcosahedronGeometry(.2,0),new T.MeshBasicMaterial({color:'#ffce68'}),CLUSTER_TUNING.capacity);this.bombletMesh.name='Cluster bomblets';this.bombletMesh.count=0;this.bombletMesh.visible=false;this.bombletMesh.frustumCulled=false;scene.add(this.bombletMesh);
+  this.bombletDummy=new T.Object3D();this.bombletOld=new T.Vector3();this.bombletEnd=new T.Vector3();this.bombletDirection=new T.Vector3();this.clusterOrigin=new T.Vector3();this.clusterEnd=new T.Vector3();
  }
- launch(origin,direction,target,mode,inherited){
-  if(!finitePoint(origin)||!finitePoint(direction)||!finitePoint(target))return false;
+ launch(origin,direction,target,mode,inherited,warhead='standard'){
+  if(!finitePoint(origin)||!finitePoint(direction)||!finitePoint(target)||!['standard','cluster'].includes(warhead))return false;
   const directionLength=Math.hypot(direction.x,direction.y,direction.z);if(!Number.isFinite(directionLength)||directionLength<.0001)return false;
   const mesh=this.pool.find(m=>!m.visible);if(!mesh)return false;mesh.visible=true;mesh.position.copy(origin);mesh.lookAt(this.look.copy(origin).sub(direction));
   const speed=MISSILE_TUNING.launchSpeed+Math.min(100,Math.max(0,Number.isFinite(inherited)?inherited:0))*.55;
   mesh.userData.motor.scale.setScalar(.28);
-  this.active.push({mesh,dir:direction.clone().divideScalar(directionLength),target:target.clone(),speed,age:0,trailAge:0,mode});this.launched++;
+  this.active.push({mesh,dir:direction.clone().divideScalar(directionLength),target:target.clone(),speed,age:0,trailAge:0,mode,warhead});this.launched++;
   this.fx.missileTrail?.(origin,direction,true);return true;
  }
- clear(){for(const m of this.pool)m.visible=false;this.active.length=0;this.launched=this.impacts=0;this.time=0;}
+ clear(){for(const m of this.pool)m.visible=false;this.active.length=0;for(const b of this.bombletPool)b.active=false;this.bomblets.length=0;this.bombletMesh.count=0;this.bombletMesh.visible=false;this.launched=this.impacts=this.clusterBursts=this.bombletsLaunched=this.bombletImpacts=0;this.time=0;}
+ segmentContact(start,end,time,dt,radius=CLUSTER_TUNING.radius){
+  const travel=this.bombletDirection.subVectors(end,start).length();if(travel<1e-8)return null;
+  this.bombletDirection.multiplyScalar(1/travel);let distance=travel,contact=null;
+  const terrain=this.terrainRay(start,this.bombletDirection,travel);
+  if(Number.isFinite(terrain)&&terrain>=0&&terrain<travel){distance=terrain;contact={kind:'terrain'};}
+  this.ray.set(start,this.bombletDirection);this.ray.far=travel;const wall=this.ray.intersectObjects(this.solids,false)[0];
+  if(wall&&wall.distance<=distance){distance=wall.distance;contact={kind:'wall'};}
+  const actor=this.sweepActors?.(start,end,{radius,time,dt});
+  if(actor&&Number.isFinite(actor.distance)&&actor.distance>=0&&actor.distance<=travel&&(!contact||actor.distance<distance)){distance=actor.distance;contact={kind:'actor',id:actor.id,generation:actor.generation};}
+  return contact?{...contact,distance,fraction:distance/travel}:null;
+ }
+ spawnCluster(m,impact,old,time){
+  this.clusterBursts++;
+  // Start on the already-cleared incoming segment. The small vertical lift is
+  // itself swept against walls, terrain and actors; it cannot jump a barrier.
+  const back=Math.min(.3,impact.distanceTo(old));this.clusterOrigin.copy(impact).addScaledVector(m.dir,-back);this.clusterEnd.copy(this.clusterOrigin);this.clusterEnd.y+=.3;
+  const liftHit=this.segmentContact(this.clusterOrigin,this.clusterEnd,time,0);
+  this.clusterOrigin.y+=liftHit?Math.max(0,liftHit.distance-.025):.3;
+  const heading=Math.atan2(m.dir.x,m.dir.z);
+  for(let i=0;i<CLUSTER_TUNING.count;i++){
+   const b=this.bombletPool.find(b=>!b.active);if(!b)break;
+   const angle=heading+(i+.5)*Math.PI*.5;
+   b.active=true;b.pos.copy(this.clusterOrigin);b.velocity.set(Math.sin(angle)*CLUSTER_TUNING.horizontalSpeed,CLUSTER_TUNING.verticalSpeed,Math.cos(angle)*CLUSTER_TUNING.horizontalSpeed);b.age=b.trailAge=0;b.mode=m.mode;
+   this.bomblets.push(b);this.bombletsLaunched++;
+  }
+ }
+ updateBomblets(elapsed,steps,step,frameEnd){
+  for(let i=this.bomblets.length-1;i>=0;i--){
+   const b=this.bomblets[i];let hit=false;
+   for(let tick=0;tick<steps&&!hit;tick++){
+    this.bombletOld.copy(b.pos);b.age+=step;b.trailAge+=step;
+    this.bombletEnd.copy(b.pos).addScaledVector(b.velocity,step);this.bombletEnd.y-=CLUSTER_TUNING.gravity*step*step*.5;b.velocity.y-=CLUSTER_TUNING.gravity*step;
+    const contact=this.segmentContact(this.bombletOld,this.bombletEnd,frameEnd-elapsed+tick*step,step);
+    b.pos.lerpVectors(this.bombletOld,this.bombletEnd,contact?contact.fraction:1);
+    const ground=this.ground(b.pos.x,b.pos.z);hit=!!contact||b.age>=CLUSTER_TUNING.lifetime||b.pos.y<=ground+CLUSTER_TUNING.radius;
+    if(hit){
+     b.pos.y=Math.max(b.pos.y,ground+CLUSTER_TUNING.radius);const radius=b.mode==='jet'?CLUSTER_TUNING.blastJet:CLUSTER_TUNING.blastCar;
+     this.fx.explosion(b.pos,radius);this.onImpact(b.pos.clone(),radius,{...(contact||{kind:b.age>=CLUSTER_TUNING.lifetime?'lifetime':'terrain'}),warhead:'cluster',secondary:true});
+     this.bombletImpacts++;b.active=false;this.bomblets.splice(i,1);
+    }else if(b.trailAge>=CLUSTER_TUNING.trailInterval){b.trailAge%=CLUSTER_TUNING.trailInterval;this.fx.tracer(this.bombletOld,b.pos,'#ffc969',.1,.05);}
+   }
+  }
+ }
+ poseBomblets(){
+  this.bombletMesh.count=this.bomblets.length;this.bombletMesh.visible=this.bomblets.length>0;
+  for(let i=0;i<this.bomblets.length;i++){const b=this.bomblets[i];this.bombletDummy.position.copy(b.pos);this.bombletDummy.rotation.set(b.age*7,b.age*11+i,b.age*5);this.bombletDummy.updateMatrix();this.bombletMesh.setMatrixAt(i,this.bombletDummy.matrix);}
+  if(this.bomblets.length)this.bombletMesh.instanceMatrix.needsUpdate=true;
+ }
+ warm(enabled){
+  if(!enabled){this.poseBomblets();return;}
+  this.bombletDummy.position.set(0,1,60);this.bombletDummy.rotation.set(0,0,0);this.bombletDummy.updateMatrix();this.bombletMesh.setMatrixAt(0,this.bombletDummy.matrix);this.bombletMesh.instanceMatrix.needsUpdate=true;this.bombletMesh.count=1;this.bombletMesh.visible=true;
+ }
  // time is the frame END in game seconds. Each actor sweep receives the start
  // time and duration of its own substep, including each missile in a volley.
  // Omitting time preserves the standalone CPU/previous caller contract.
@@ -34,6 +93,9 @@ export class Ordnance{
   // at different frame rates. Swept casts still cover every traveled segment.
   const elapsed=Math.min(dt,.25),steps=Math.ceil(elapsed*120),step=elapsed/steps,frameEnd=Number.isFinite(time)?time:this.time+elapsed;
   this.time=frameEnd;
+  // New children begin at the impact frame boundary, rather than integrating
+  // before their parent has hit. Existing children use the same 120 Hz sweep.
+  this.updateBomblets(elapsed,steps,step,frameEnd);
   for(let i=this.active.length-1;i>=0;i--){
    const m=this.active[i],p=m.mesh.position;let hit=false;
    for(let tick=0;tick<steps&&!hit;tick++){
@@ -67,9 +129,10 @@ export class Ordnance{
      m.trailAge%=MISSILE_TUNING.trailInterval;this.tail.copy(p).addScaledVector(m.dir,-.85);this.fx.missileTrail?.(this.tail,m.dir);
     }
     hit=!!contact||m.age>=MISSILE_TUNING.lifetime||p.y<this.ground(p.x,p.z)+.15;
-    if(hit){this.impacts++;const radius=m.mode==='jet'?14:10.5;this.fx.explosion(p,radius);this.onImpact(p.clone(),radius,contact||{kind:m.age>=MISSILE_TUNING.lifetime?'lifetime':'terrain'});m.mesh.visible=false;this.active.splice(i,1);}
+    if(hit){this.impacts++;const radius=m.mode==='jet'?14:10.5;this.fx.explosion(p,radius);this.onImpact(p.clone(),radius,{...(contact||{kind:m.age>=MISSILE_TUNING.lifetime?'lifetime':'terrain'}),warhead:m.warhead,secondary:false});if(m.warhead==='cluster')this.spawnCluster(m,p,this.old,frameEnd);m.mesh.visible=false;this.active.splice(i,1);}
    }
    if(!hit){this.tail.copy(p).addScaledVector(m.dir,-1.8);this.fx.tracer(this.tail,p,'#ffd38b',.065,.038);}
   }
+  this.poseBomblets();
  }
 }

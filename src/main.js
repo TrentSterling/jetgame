@@ -18,7 +18,7 @@ import {flightTelemetry} from './flight-control.js';
 import {moveFlightMouse,flightInputFeedback} from './flight-input.js';
 import {updateJetExhaust} from './jet-exhaust.js';
 import {groundScrapeDamage,resetFlightDamage} from './flight-damage.js';
-import {Progression} from './progression.js';
+import {Progression,CLUSTER_UNLOCK} from './progression.js';
 import {VehicleEffects} from './vehicle-fx.js';
 import {freeSpot} from './collision.js';
 import {resetInfantry,stepInfantry,groundSurface,updateBoost} from './movement.js';
@@ -34,6 +34,7 @@ import {CombatTargets} from './combat-targets.js';
 import {GpuHUD} from './gpu-hud.js';
 import {missionHUD} from './hud-mission.js';
 import {HudNavigation} from './hud-navigation.js';
+import {ChaseCamera} from './chase-camera.js';
 import {poseSuspension} from './suspension.js';
 import {createWeaponPose,sampleWeaponPose,applyWeaponPose} from './weapon-motion.js';
 const combat=new Combat();let lighting,saves;
@@ -45,6 +46,7 @@ const renderer=new T.WebGPURenderer({canvas,antialias:true,powerPreference:'high
 const hud=new GpuHUD();hud.resize(innerWidth,innerHeight);
 const ui={screen:'loading',backScreen:'start',message:'',messageUntil:0,saveStatus:'Local expedition checkpoints',continuing:false,sceneFade:0};
 const navigation=new HudNavigation();
+const chaseCamera=new ChaseCamera();
 const reticlePoint=new T.Vector3(),hudPoint=new T.Vector3(),aimOrigin=new T.Vector3(),aimDirection=new T.Vector3();
 const loadingScene=new T.Scene();loadingScene.background=new T.Color('#0b1018');
 let hudReady=false,carAim=null,startupTarget=null;
@@ -71,6 +73,7 @@ const keys=new Set(),pressed=new Set();let mouseDown=false,secondaryDown=false,a
 const melee=new T.Vector4(),meleeAim=new T.Vector4();let blastType=3,gunRounds=0,bombImpacts=0;
 const frameSamples=[];
 let deathAt=0,respawnAt=0,respawnMode='foot',shieldUntil=0,respawns=0,hurtUntil=0;
+let clusterAvailableSeen=false;
 const deathPoint=new T.Vector3(),pendingBlasts=[];
 const combatTargets=new CombatTargets({snapshot:defenses.crowdSnapshot,generation:()=>horde?.generation,visible:(origin,point)=>{
  const view=new T.Vector3().copy(point).project(camera);if(view.z<0||view.z>1)return false;
@@ -143,7 +146,7 @@ function leavePassenger(emergency=false){
  if(!exit){message('EXIT BLOCKED',1);return false;}
  passenger=null;resetInfantry(player);player.pos.set(exit.x,exit.y,exit.z);player.vx=exit.vx;player.vz=exit.vz;
  if(exit.airborne){player.vy=5;player.grounded=false;player.hasChute=true;player.chuteDelay=.25;}
- activate('foot',true);message(exit.airborne?'EJECTED · SPACE OPEN CHUTE':'ON FOOT',2);return true;
+ activate('foot',emergency);message(exit.airborne?'EJECTED · SPACE OPEN CHUTE':'ON FOOT',2);return true;
 }
 function syncPassenger(){
  if(!passenger)return;
@@ -201,7 +204,7 @@ function interact(){
  const target=boardingTarget();
  if(target?.type==='passenger'){
   const ally=target.driver;
-  rideWith(ally,true);message('RIDING WITH '+ally.kind.toUpperCase()+' · Q TAKE WHEEL · E EXIT',3);return true;
+  rideWith(ally);message('RIDING WITH '+ally.kind.toUpperCase()+' · Q TAKE WHEEL · E EXIT',3);return true;
  }
  const entry=target?.entry;if(!entry)return false;const next=entry.type;fleet.select(entry);if(next==='car')bindCar(fleet.car,entry.mesh);else jetMesh=entry.mesh;
  player.parachute=false;activate(next);message(next==='car'?'SHIFT BOOST · E EXIT':'W THROTTLE · MOUSE UP TO LIFT · E EJECT',3);return true;
@@ -280,13 +283,13 @@ function restart(){
  fleet.reset();bindCar(fleet.car,fleet.active.car.mesh);jetMesh=fleet.active.jet.mesh;expeditions.reset();
  for(const b of activeBombs){scene.remove(b.mesh);b.mesh.geometry.dispose();b.mesh.material.dispose();}activeBombs.length=0;fx.clear();
  horde.reset();bots.reset();defenses.reset();defenses.clearShots(horde);lighting?.clear();combat.reset();ordnance.clear();carAim=null;gunRounds=bombImpacts=0;upgrades.reset();vehicleFX.clear();drivingFX.clear();course.reset();jumps=0;pendingBlasts.length=0;resetInfantry(player);player.pos.set(0,0,70);player.health=car.health=plane.health=100;car.impactAt=plane.impactAt=0;carMesh.visible=jetMesh.visible=true;player.yaw=player.pitch=player.vy=0;dead=won=false;shieldUntil=respawns=respawnAt=0;time=0;flowAt=statsAt=shotAt=bombAt=rearm=0;
- score=previousHits=previousContacts=previousCar=previousFoot=previousCab=previousJet=0;ammo=32;bombs=6;reload=0;shakes=damageFade=hitFade=0;car.pos.set(-7,0,59);car.speed=car.yaw=0;resetDriving(car);plane.pos.set(25,1,83);plane.speed=plane.yaw=plane.pitch=plane.flightPitch=plane.roll=0;plane.skimming=false;
+ clusterAvailableSeen=false;score=previousHits=previousContacts=previousCar=previousFoot=previousCab=previousJet=0;ammo=32;bombs=6;reload=0;shakes=damageFade=hitFade=0;car.pos.set(-7,0,59);car.speed=car.yaw=0;resetDriving(car);plane.pos.set(25,1,83);plane.speed=plane.yaw=plane.pitch=plane.flightPitch=plane.roll=0;plane.skimming=false;
  for(const body of [car,plane])Object.assign(body,{boost:1,boostDelay:0,boostLocked:false,boosting:false,wallContact:false});plane.taxiing=true;resetAircraftSystems(plane);canopy.visible=false;
  ui.message='';ui.messageUntil=0;mode='foot';setMode('foot');
 }
 function saveRuntime(){return {mode:handoff.active&&!dead?'foot':mode,time,ammo,bombs,bombAt,rearm,shotAt,reload,dead,won,score,previousHits,previousContacts,previousCar,previousFoot,previousCab,previousJet,deathAt,respawnAt,respawnMode,shieldUntil,hurtUntil,respawns,jumps,gunRounds,bombImpacts,deathPoint:deathPoint.toArray()};}
 function restoreRuntime(s){
- resetFlightDamage(plane);
+ resetFlightDamage(plane);ordnance.clear();pendingBlasts.length=0;for(const b of activeBombs){scene.remove(b.mesh);b.mesh.geometry.dispose();b.mesh.material.dispose();}activeBombs.length=0;
  releaseDriver();passenger=null;
  hurtUntil=s.hurtUntil??0;
  ({mode,time,ammo,bombs,bombAt,rearm,shotAt,reload,dead,won,score,previousHits,previousContacts,previousCar,previousFoot,previousCab,previousJet,deathAt,respawnAt,respawnMode,shieldUntil,respawns,jumps,gunRounds,bombImpacts}=s);deathPoint.fromArray(s.deathPoint);
@@ -297,21 +300,14 @@ function restoreRuntime(s){
 }
 function checkpointPause(){if(saves?.started)void saves.save();}
 function updateCamera(dt,snap=false){
- if(dead){const dest=deathPoint.clone().add(new T.Vector3(8,6,12));camera.position.lerp(dest,1-Math.exp(-dt*2.4));camera.up.set(0,1,0);camera.lookAt(deathPoint.clone().add(new T.Vector3(0,1,0)));return;}
+ if(dead){chaseCamera.reset();const dest=deathPoint.clone().add(new T.Vector3(8,6,12));if(snap)camera.position.copy(dest);else camera.position.lerp(dest,1-Math.exp(-dt*2.4));camera.up.set(0,1,0);camera.lookAt(deathPoint.clone().add(new T.Vector3(0,1,0)));camera.updateMatrixWorld();projectReticle();return;}
  syncPassenger();
- if(mode==='foot'){camera.up.set(0,1,0);camera.rotation.order='YXZ';camera.rotation.set(player.pitch,player.yaw,player.slideTime>0?-.035:player.parachute?-Math.sin(time*2)*.018:0);camera.position.copy(player.pos).add(new T.Vector3(0,player.eyeHeight-player.landing*.16,0));const speed=Math.hypot(player.vx,player.vz),walk=player.grounded&&player.slideTime===0;camera.position.y+=walk?Math.sin(time*(player.sprinting?17:12))*.025*Math.min(1,speed/6):0;gunPoseState.time=time;gunPoseState.reload=reload;gunPoseState.speed=speed;gunPoseState.walk=walk;gunPoseState.sprinting=player.sprinting;gunPoseState.parachute=player.parachute;gunPoseState.shoveAnimation=combat.shoveAnimation;applyWeaponPose(gun,sampleWeaponPose(gunPose,gunPoseState));}
- else if(mode==='car'){
-  const f=new T.Vector3(-Math.sin(car.yaw),0,-Math.cos(car.yaw)),motion=new T.Vector3(car.vx,0,car.vz);
-  if(motion.length()>4&&car.speed>0)f.lerp(motion.normalize(),.4).normalize();
-  const dest=car.pos.clone().addScaledVector(f,-(8.5+Math.abs(car.speed)*.028)).add(new T.Vector3(0,4.1,0));dest.y=Math.max(dest.y,rideHeight(dest.x,dest.z)+2.4);
-  if(snap)camera.position.copy(dest);else camera.position.lerp(dest,1-Math.exp(-dt*7));look.copy(car.pos).addScaledVector(f,8).add(new T.Vector3(0,1.25,0));camera.up.set(0,1,0);camera.lookAt(look);
- }
- else{const f=flightDirection(),dest=plane.pos.clone().addScaledVector(f,-13).add(new T.Vector3(0,4.8,0));dest.y=Math.max(dest.y,height(dest.x,dest.z)+2.8);if(snap)camera.position.copy(dest);else camera.position.lerp(dest,1-Math.exp(-dt*7));camera.up.set(0,1,0);camera.lookAt(plane.pos.clone().addScaledVector(f,19).add(new T.Vector3(0,1,0)));}
- const fov=mode==='foot'?(player.parachute?84:player.slideTime>0?88:player.sprinting?85:75):currentBody().boosting?88:75+Math.min(7,Math.max(0,Math.abs(currentBody().speed)-15)*.16);
- camera.fov=snap?fov:T.MathUtils.lerp(camera.fov,fov,1-Math.exp(-dt*7));camera.updateProjectionMatrix();
+ if(mode==='foot'){chaseCamera.reset();camera.up.set(0,1,0);camera.rotation.order='YXZ';camera.rotation.set(player.pitch,player.yaw,player.slideTime>0?-.035:player.parachute?-Math.sin(time*2)*.018:0);camera.position.copy(player.pos).add(new T.Vector3(0,player.eyeHeight-player.landing*.16,0));const speed=Math.hypot(player.vx,player.vz),walk=player.grounded&&player.slideTime===0;camera.position.y+=walk?Math.sin(time*(player.sprinting?17:12))*.025*Math.min(1,speed/6):0;gunPoseState.time=time;gunPoseState.reload=reload;gunPoseState.speed=speed;gunPoseState.walk=walk;gunPoseState.sprinting=player.sprinting;gunPoseState.parachute=player.parachute;gunPoseState.shoveAnimation=combat.shoveAnimation;applyWeaponPose(gun,sampleWeaponPose(gunPose,gunPoseState));const fov=player.parachute?84:player.slideTime>0?88:player.sprinting?85:75;camera.fov=snap?fov:T.MathUtils.lerp(camera.fov,fov,1-Math.exp(-dt*7));camera.updateProjectionMatrix();}
+ else chaseCamera.update(camera,currentBody(),mode==='car'?carMesh:jetMesh,{mode,dt,snap,ground:mode==='car'?rideHeight:height,shake:shakes,time});
  if(transitionLeft>0&&!snap){transitionLeft=Math.max(0,transitionLeft-dt);const t=1-transitionLeft/.38,s=t*t*(3-2*t);camera.position.lerpVectors(transitionFrom,camera.position,s);transitionTarget.copy(camera.quaternion);camera.quaternion.slerpQuaternions(transitionRotation,transitionTarget,s);}
- if(shakes>0){camera.position.x+=(Math.random()-.5)*shakes;camera.position.y+=(Math.random()-.5)*shakes;}
+ if(mode==='foot'&&shakes>0){camera.position.x+=Math.sin(time*43)*shakes*.4;camera.position.y+=Math.sin(time*37)*shakes*.4;}
  camera.updateMatrixWorld();
+ if(mode!=='foot'&&chaseCamera.initialized)chaseCamera.screen.copy(chaseCamera.anchor).project(camera);
  projectReticle();
 }
 function projectReticle(){
@@ -320,7 +316,14 @@ function projectReticle(){
  if(mode==='jet')reticlePoint.copy(plane.pos).addScaledVector(flightDirection(),150).project(camera);
 }
 function flightDirection(){const f=flightVector(plane);return new T.Vector3(f.x,f.y,f.z);}
-function buyUpgrade(which){if(dead||(paused&&ui.screen!=='upgrades'))return false;if(!upgrades.buy(which))return false;if(which==='foot')ammo=Math.min(upgrades.magazine,ammo+8);if(which==='jet')bombs++;message(`${{foot:'CARBINE',car:'BUGGY',jet:'STRIKE KIT'}[which]} ${upgrades.levels[which]} INSTALLED`,2);fx.sound('hit');updateHUD();return true;}
+function changeMissiles(){
+ if(dead||(paused&&ui.screen!=='upgrades'))return false;
+ const owned=upgrades.equipment.cluster,changed=owned?upgrades.toggleMissiles():upgrades.buyCluster();
+ if(!changed){message('CLUSTER WARHEADS · '+Math.max(0,CLUSTER_UNLOCK.cost-upgrades.scrap)+' MORE SCRAP',2);updateHUD();return false;}
+ clusterAvailableSeen=true;message(owned?upgrades.missileWarhead.toUpperCase()+' MISSILES EQUIPPED':'CLUSTER WARHEADS UNLOCKED · RMB INTO A CROWD',3.5);fx.sound('hit');updateHUD();
+ if(saves?.started)void saves.save({followup:true});return true;
+}
+function buyUpgrade(which){if(which==='cluster')return changeMissiles();if(dead||(paused&&ui.screen!=='upgrades'))return false;if(!upgrades.buy(which))return false;if(which==='foot')ammo=Math.min(upgrades.magazine,ammo+8);if(which==='jet')bombs++;message(`${{foot:'CARBINE',car:'BUGGY',jet:'STRIKE KIT'}[which]} ${upgrades.levels[which]} INSTALLED`,2);fx.sound('hit');updateHUD();if(saves?.started)void saves.save({followup:true});return true;}
 function clippedRay(origin,dir,range){
  range=terrainRayDistance(origin,dir,range);ray.set(origin,dir);ray.far=range;const hit=ray.intersectObjects(world.solids,false)[0];if(hit)range=Math.min(range,hit.distance);return {range,hit};
 }
@@ -352,7 +355,7 @@ function secondary(){
  if(mode==='foot'){
   if(!combat.shove())return false;camera.getWorldDirection(forward);const origin=player.pos.clone().add(new T.Vector3(0,1.1,0));const range=clippedRay(origin,forward,3.8).range;melee.set(origin.x,origin.y,origin.z,22);meleeAim.set(forward.x,forward.y,forward.z,range);fx.sound('shove');return true;
  }
- const count=combat.missile(mode);if(!count)return false;const body=currentBody(),dir=mode==='car'?new T.Vector3().copy(carWeaponDirection(car,-.005)):flightDirection();
+ const warhead=upgrades.missileWarhead,count=combat.missile(mode,warhead);if(!count)return false;const body=currentBody(),dir=mode==='car'?new T.Vector3().copy(carWeaponDirection(car,-.005)):flightDirection();
  const origin=body.pos.clone().add(new T.Vector3(0,mode==='car'?1.8:0,0));
  const assisted=mode==='car'?combatTargets.aim(origin,dir,{preferredId:carAim?.id,maxDistance:150,coneDegrees:10}):null;
  if(assisted)dir.copy(assisted.direction);
@@ -366,7 +369,7 @@ function secondary(){
   const offset=launch.clone().sub(origin),length=offset.length();offset.multiplyScalar(1/length);
   const actor=combatTargets.sweep(origin,launch,{time,dt:0,radius:.14});
   const clear=Math.min(clippedRay(origin,offset,length).range,actor?.distance??length);launch.copy(origin).addScaledVector(offset,Math.max(0,Math.min(length,clear-.16)));
-  ordnance.launch(launch,dir,target,mode,body.speed);
+  ordnance.launch(launch,dir,target,mode,body.speed,warhead);
  }
  fx.sound('rocket');return true;
 }
@@ -432,13 +435,13 @@ function acceptStats(s,revision=carRevision){
  // The first read after a seat/vehicle exchange establishes a new baseline.
  // Shared cumulative counters cannot attribute that partial interval to a car.
  if(revision===carRevision)carStatsRevision=revision;
- previousHits=s.hits;previousContacts=s.contactMs;previousCar=s.carContacts;previousFoot=s.footContactMs;previousCab=s.cabContactMs;previousJet=s.jetContacts;score=s.kills;upgrades.sync(s.scrap);updateHUD();
+ previousHits=s.hits;previousContacts=s.contactMs;previousCar=s.carContacts;previousFoot=s.footContactMs;previousCab=s.cabContactMs;previousJet=s.jetContacts;score=s.kills;upgrades.sync(s.scrap);if(running&&!paused&&!dead&&!clusterAvailableSeen&&!upgrades.equipment.cluster&&upgrades.scrap>=CLUSTER_UNLOCK.cost){clusterAvailableSeen=true;message('B  CLUSTER WARHEADS READY · 600 SCRAP',3);}updateHUD();
 }
 
 function step(dt){if(!horde)return;dt=Math.min(dt,.035);time+=dt;world.surfaces.update(time);shot.origin.w=0;blast.w=0;blastType=3;melee.w=0;combat.update(dt);
  validateDriverBinding();
  carBefore.set(car.pos.x,car.pos.y+.9,car.pos.z,0);jetBefore.set(plane.pos.x,plane.pos.y,plane.pos.z,0);
- if(!dead)updateControls(dt);coastVehicles(dt);updateCamera(dt);updateAimAssist();if(!passenger&&!dead&&(mouseDown||keys.has('Fire')))shoot();if(!dead&&secondaryDown)secondary();ordnance.update(dt,time);for(const flash of jetMesh.userData.flashes)flash.visible=mode==='jet'&&!dead&&recoil>.6;for(const barrel of jetMesh.userData.guns)barrel.rotation.z+=dt*(mouseDown?45:3);for(let i=0;i<ordnance.active.length&&i<6;i++)lighting?.flash(ordnance.active[i].mesh.position,'#ff962c',80,15,.08,i+1);
+ if(!dead)updateControls(dt);coastVehicles(dt);updateCamera(passenger?0:dt);updateAimAssist();if(!passenger&&!dead&&(mouseDown||keys.has('Fire')))shoot();if(!dead&&secondaryDown)secondary();ordnance.update(dt,time);for(const flash of jetMesh.userData.flashes)flash.visible=mode==='jet'&&!dead&&recoil>.6;for(const barrel of jetMesh.userData.guns)barrel.rotation.z+=dt*(mouseDown?45:3);for(let i=0;i<ordnance.active.length&&i<6;i++)lighting?.flash(ordnance.active[i].mesh.position,'#ff962c',80,15,.08,i+1);
  for(let i=activeBombs.length-1;i>=0;i--){const b=activeBombs[i];b.vel.y-=dt*16;b.mesh.position.addScaledVector(b.vel,dt);const gy=height(b.mesh.position.x,b.mesh.position.z);if(b.mesh.position.y<=gy+.2){bombImpacts++;const p=b.mesh.position.clone();p.y=gy;blast.set(p.x,p.y+.5,p.z,upgrades.blastRadius);fx.explosion(p,upgrades.blastRadius);scene.remove(b.mesh);b.mesh.geometry.dispose();b.mesh.material.dispose();activeBombs.splice(i,1);break;}}
  const pos=currentBody().pos;world.update(pos);expeditions.update(dt,{pos,mode,body:currentBody(),holding:keys.has('KeyF'),dead:dead||!!(expeditions.party&&fleet.entries.find(e=>e.id===expeditions.party.vehicle)?.body.health<=0),damaged:time<hurtUntil,capacity:currentBody().seats??0});fleet.update(expeditions.sites,pos,expeditions.party?.vehicle);fx.mixer.update(dt,{pos,yaw:currentBody().yaw,mode,speed:mode==='foot'?Math.hypot(player.vx,player.vz):currentBody().speed,boost:!!currentBody().boosting,slip:car.slip,grounded:mode==='foot'?player.grounded:car.grounded});target.set(pos.x,pos.y+.8,pos.z,dead?3:mode==='jet'?2:mode==='car'?1:0);
  if(time>flowAt){if(field.update(pos.x,pos.z))horde.updateFlow();flowAt=time+.8;navUpdates++;}
@@ -483,14 +486,14 @@ function updateHUD(){
  hud.update({
   screen:ui.screen==='game'&&dead?'death':ui.screen,mode,modeLabel:passenger?'PASSENGER · '+passenger.driver.kind:handoff.active?'DRIVING · '+handoff.active.driver.kind:mode==='foot'?modeNames.foot:fleet.active[mode].name,
   health:body.health,shielded:time<shieldUntil,ammo,ammoMax:upgrades.magazine,ammoSuffix:'/ '+upgrades.magazine,weapon:mode==='foot'?'CARBINE':mode==='car'?'SPEED':'AIRSPEED',
-  speed:Math.abs(body.speed||0)*3.6,altitude:Math.max(0,plane.pos.y-height(plane.pos.x,plane.pos.z)),missiles:combat.ammo[mode]||0,bombs,
+  speed:Math.abs(body.speed||0)*3.6,altitude:Math.max(0,plane.pos.y-height(plane.pos.x,plane.pos.z)),missiles:combat.ammo[mode]||0,bombs,missileWarhead:upgrades.missileWarhead,
   boost:mode==='foot'?combat.stamina:body.boost,boosting:mode==='foot'?combat.shoveAnimation>0:!!body.boosting,boostLocked:!!body.boostLocked,reload:mode==='foot'&&reload>0?1-reload/1.35:0,
   ...mission,seatAction:passenger?'Take wheel':handoff.active?'Hand back wheel':'',message:time<=ui.messageUntil?ui.message:'',hit:hitFade,damage:damageFade,reticle:{x:reticlePoint.x,y:reticlePoint.y},waypoint,aim,jet,
   kills:score,rescued:expeditions.rescued,relays:expeditions.relays,scrap:upgrades.scrap,
-  upgrades:[['foot','Z','CARBINE','Damage, magazine, fire rate'],['car','X','TORQUE','Acceleration and crowd impact'],['jet','V','STRIKE KIT','Bombs, blast and rearm']].map(([id,key,name,detail])=>({id,key,name,detail,level:upgrades.levels[id],cost:upgrades.cost(id),available:!dead&&upgrades.scrap>=upgrades.cost(id)&&upgrades.levels[id]<3})),
+  upgrades:[...['foot','car','jet'].map((id,i)=>({id,key:['Z','X','V'][i],name:['CARBINE','TORQUE','STRIKE KIT'][i],detail:['Damage, magazine, fire rate','Acceleration and crowd impact','Bombs, blast and rearm'][i],level:upgrades.levels[id],cost:upgrades.cost(id),available:!dead&&upgrades.scrap>=upgrades.cost(id)&&upgrades.levels[id]<3})),{id:'cluster',key:'B',name:CLUSTER_UNLOCK.name,detail:'4 bomblets · Slower rearm',level:upgrades.equipment.cluster?1:0,cost:CLUSTER_UNLOCK.cost,equipped:upgrades.missileWarhead==='cluster',available:!dead&&(upgrades.equipment.cluster||upgrades.scrap>=CLUSTER_UNLOCK.cost)}],
   respawnMode,respawnSeconds:Math.max(0,respawnAt-time),deployAvailable:dead&&time>=deathAt+.65,keyboardOnly:document.pointerLockElement===canvas,
   ready:!!window.HordeStartup?.ready,progress:window.HordeStartup?.progress||0,phase:window.HordeStartup?.phase||'Starting graphics',phaseDetail:window.HordeStartup?.phaseDetail||'Preparing the game renderer.',phaseIndex:window.HordeStartup?.phaseIndex||0,phaseCount:window.HordeStartup?.phaseCount||14,error:window.bootError||'',sceneFade:ui.sceneFade,
-  saveStatus:ui.saveStatus,saveAvailable:!!saves?.enabled&&!saves.blocked,continuing:ui.continuing,muted:fx.mixer.muted,version:'0.11.0',
+  saveStatus:ui.saveStatus,saveAvailable:!!saves?.enabled&&!saves.blocked,continuing:ui.continuing,muted:fx.mixer.muted,version:'0.12.0',
  });
 }
 function renderFrame(dt=0){
@@ -519,7 +522,7 @@ window.addEventListener('keydown',e=>{if(['Space','ArrowUp','ArrowDown','Tab'].i
 window.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('blur',()=>{keys.clear();pressed.clear();mouseDown=secondaryDown=false;});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)checkpointPause();});
 window.addEventListener('pagehide',checkpointPause);
-window.addEventListener('keydown',e=>{if(!e.repeat){const m={KeyZ:'foot',KeyX:'car',KeyV:'jet'}[e.code];if(m)buyUpgrade(m);}});
+window.addEventListener('keydown',e=>{if(!e.repeat){const m={KeyZ:'foot',KeyX:'car',KeyV:'jet',KeyB:'cluster'}[e.code];if(m)buyUpgrade(m);}});
 window.addEventListener('mousemove',e=>{
  if(document.pointerLockElement!==canvas){if(paused){ui.focusAction=hud.hitTest(e.clientX,e.clientY);hud.setPointer(e.clientX,e.clientY);}return;}
  if(paused||dead)return;
@@ -569,8 +572,8 @@ async function init(){try{
    fx.skid(new T.Vector3(0,0,60),0,0);
    gun.userData.flash.visible=true;canopy.visible=true;carMesh.userData.driver.visible=true;for(const mesh of [carMesh,jetMesh])for(const flame of mesh.userData.boost)flame.visible=true;
    updateJetExhaust(jetMesh,{health:100,boosting:true,speed:0},0);
-   defenses.warm(true);bots.warm(true);await renderer.compileAsync(scene,camera);
-   warmBattlefield();defenses.warm(false);bots.warm(false);
+   defenses.warm(true);bots.warm(true);ordnance.warm(true);await renderer.compileAsync(scene,camera);
+   warmBattlefield();defenses.warm(false);bots.warm(false);ordnance.warm(false);
    fx.clear();lighting.clear();lighting.update(camera,0);gun.userData.flash.visible=canopy.visible=carMesh.userData.driver.visible=false;for(const mesh of [carMesh,jetMesh])for(const flame of mesh.userData.boost)flame.visible=false;
    updateJetExhaust(jetMesh,plane,time);
  },true,{detail:'Preparing weapon flashes, vehicles and explosions before you play.'});
@@ -582,8 +585,8 @@ async function init(){try{
  await startup.phase('Preparing your final view',async()=>{syncVehicles();updateCamera(0,true);lighting.update(camera,0);await renderer.compileAsync(scene,camera);warmBattlefield();},true,{detail:ui.continuing?'Warming the battlefield at your saved position. Your expedition is almost ready.':'Warming your starting area. Your first expedition is almost ready.'});
  startup.ready();
  const testMode=new URLSearchParams(location.search).has('test');if(testMode){ui.screen='game';paused=true;}
- window.HordeLab={ready:true,hud,combatTargets,renderer,lighting,defenses,bots,world,scene,camera,horde,player,get car(){return car;},plane,fleet,expeditions,saves,audio:fx.mixer,keys,pressed,setMode,interact,swapSeats,nearbyVehicle,upgrades,buyUpgrade,vehicleFX,course,drivingFX,get carMesh(){return carMesh;},get jetMesh(){return jetMesh;},combat,ordnance,rideHeight,takeDamage,respawn,resetDriving,
-  report:()=>({mode,seatHandoff:handoff.active?{driver:handoff.active.driver.kind,index:handoff.active.driver.index,epoch:handoff.active.epoch,valid:handoff.valid()}:null,hud:hud.report(),targeting:combatTargets.report(),passenger:passenger?{driver:passenger.driver.kind,index:passenger.driver.index,seat:passengerSeat(passenger.driver.body),epoch:passenger.epoch}:null,time,frames,paused,bots:bots.report(),crowdSnapshot:defenses.crowdSnapshot.report(),defenses:defenses.report(),terrain:world.stream.report(),expedition:expeditions.report(),fleet:fleet.report(),audio:fx.mixer.report(),health:currentBody().health,healthByMode:{foot:player.health,car:car.health,jet:plane.health},dead,respawnMode,respawns,shieldSeconds:Math.max(0,shieldUntil-time),scrap:upgrades.scrap,levels:{...upgrades.levels},wreckParts:vehicleFX.parts.length,smokePuffs:vehicleFX.activePuffs,ammo,bombs,bombImpacts,bombsInFlight:activeBombs.length,alive:horde.stats.alive,pressure:{...horde.pressure.report},effects:fx.report(),stats:{...horde.stats},position:player.pos.toArray(),carPosition:car.pos.toArray(),jetPosition:plane.pos.toArray(),flight:flightTelemetry(plane),steering:flightInputFeedback(aimX,aimY,plane),aircraft:aircraftTelemetry(plane),speed:mode==='car'?car.speed:plane.speed,lighting:{active:lighting.active,froxels:2880,areaLights:lighting.area.length,terrainWorkers:world.terrain.userData.workers},combat:{stamina:combat.stamina,shoves:combat.shoves,missilesFired:combat.missilesFired,ammo:{...combat.ammo},activeMissiles:ordnance.active.length,missileImpacts:ordnance.impacts,gunRounds},suspension:carMesh.userData.suspension.map(l=>({wheelY:l.pivot.position.y,compression:l.compression})),driving:{vx:car.vx,vz:car.vz,slip:car.slip,steer:car.steer,grounded:car.grounded,airTime:car.airTime,jumps,smashed:course.smashed,driver:carMesh.userData.driver.visible,tireMarks:drivingFX.markCount},movement:{speed:Math.hypot(player.vx,player.vz),sprint:player.sprinting,slide:player.slideTime,grounded:player.grounded,parachute:player.parachute,hasChute:player.hasChute,eyeHeight:player.eyeHeight,vy:player.vy},boost:{car:car.boost,jet:plane.boost,active:!!currentBody().boosting},nearby:nearbyVehicle(),trianglesPerEnemy:horde.trianglesPerEnemy,navUpdates,startup:startup.state,frameTiming:frameTiming(),fps:Math.round(1/dtAvg),gpu:renderer.backend.isWebGPUBackend}),
+ window.HordeLab={ready:true,hud,combatTargets,renderer,lighting,defenses,bots,world,scene,camera,horde,player,get car(){return car;},plane,fleet,expeditions,saves,chaseCamera,audio:fx.mixer,keys,pressed,setMode,interact,swapSeats,nearbyVehicle,upgrades,buyUpgrade,changeMissiles,vehicleFX,course,drivingFX,get carMesh(){return carMesh;},get jetMesh(){return jetMesh;},combat,ordnance,rideHeight,takeDamage,respawn,resetDriving,
+  report:()=>({mode,seatHandoff:handoff.active?{driver:handoff.active.driver.kind,index:handoff.active.driver.index,epoch:handoff.active.epoch,valid:handoff.valid()}:null,hud:hud.report(),targeting:combatTargets.report(),passenger:passenger?{driver:passenger.driver.kind,index:passenger.driver.index,seat:passengerSeat(passenger.driver.body),epoch:passenger.epoch}:null,time,frames,paused,bots:bots.report(),crowdSnapshot:defenses.crowdSnapshot.report(),defenses:defenses.report(),terrain:world.stream.report(),expedition:expeditions.report(),fleet:fleet.report(),audio:fx.mixer.report(),health:currentBody().health,healthByMode:{foot:player.health,car:car.health,jet:plane.health},dead,respawnMode,respawns,shieldSeconds:Math.max(0,shieldUntil-time),scrap:upgrades.scrap,levels:{...upgrades.levels},equipment:{...upgrades.equipment},cameraRig:chaseCamera.report(),wreckParts:vehicleFX.parts.length,smokePuffs:vehicleFX.activePuffs,ammo,bombs,bombImpacts,bombsInFlight:activeBombs.length,alive:horde.stats.alive,pressure:{...horde.pressure.report},effects:fx.report(),stats:{...horde.stats},position:player.pos.toArray(),carPosition:car.pos.toArray(),jetPosition:plane.pos.toArray(),flight:flightTelemetry(plane),steering:flightInputFeedback(aimX,aimY,plane),aircraft:aircraftTelemetry(plane),speed:mode==='car'?car.speed:plane.speed,lighting:{active:lighting.active,froxels:2880,areaLights:lighting.area.length,terrainWorkers:world.terrain.userData.workers},combat:{stamina:combat.stamina,shoves:combat.shoves,missilesFired:combat.missilesFired,ammo:{...combat.ammo},activeMissiles:ordnance.active.length,missileImpacts:ordnance.impacts,gunRounds},suspension:carMesh.userData.suspension.map(l=>({wheelY:l.pivot.position.y,compression:l.compression})),driving:{vx:car.vx,vz:car.vz,slip:car.slip,steer:car.steer,grounded:car.grounded,airTime:car.airTime,jumps,smashed:course.smashed,driver:carMesh.userData.driver.visible,tireMarks:drivingFX.markCount},movement:{speed:Math.hypot(player.vx,player.vz),sprint:player.sprinting,slide:player.slideTime,grounded:player.grounded,parachute:player.parachute,hasChute:player.hasChute,eyeHeight:player.eyeHeight,vy:player.vy},boost:{car:car.boost,jet:plane.boost,active:!!currentBody().boosting},nearby:nearbyVehicle(),trianglesPerEnemy:horde.trianglesPerEnemy,navUpdates,startup:startup.state,frameTiming:frameTiming(),fps:Math.round(1/dtAvg),gpu:renderer.backend.isWebGPUBackend}),
   start:startGameplay,pause:()=>{paused=true;checkpointPause();},restart,
   advance:async(n=1)=>{for(let i=0;i<n;i++){step(1/60);renderFrame(1/60);}await renderer.backend.device.queue.onSubmittedWorkDone();if(horde.pending)await horde.pending;acceptStats(await horde.readStats());return window.HordeLab.report();},
   aim:(yaw,pitch=0)=>{player.yaw=yaw;player.pitch=pitch;updateCamera(0,true);},fire:on=>{mouseDown=on;},secondary:on=>{secondaryDown=on;},steer:(x,y)=>{aimX=x;aimY=y;},bomb:dropBomb,

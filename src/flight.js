@@ -58,7 +58,8 @@ function stepFlightSlice(plane,dt,input,ground,obstacles){
   const response=stepFlightControl(plane,dt,command,airControl);
   plane.speed=Math.max(plane.taxiing?0:14,plane.speed-response.drag*dt);
   const lift=flightLift(plane.speed),deficit=1-lift;
-  plane.yaw+=response.yawRate*(1-airControl*deficit*.8)*dt;
+  plane.flightYawRate=response.yawRate*(1-airControl*deficit*.8);
+  plane.yaw+=plane.flightYawRate*dt;
   const pullAuthority=response.pitchRate>0?.15+.85*lift:1;
   const noseRecovery=deficit*airControl*Math.max(0,plane.pitch+.28)*2.2;
   plane.pitch=clamp(plane.pitch+(response.pitchRate*pullAuthority-noseRecovery)*dt,FLIGHT_TUNING.pitchMin,FLIGHT_TUNING.pitchMax);
@@ -78,7 +79,13 @@ function stepFlightSlice(plane,dt,input,ground,obstacles){
   const flightSpeed=plane.speed;
   // Low airspeed produces a forgiving descent, not an indefinitely floating
   // 14 m/s gun platform. Pulling the nose up cannot manufacture missing lift.
-  const verticalSpeed=direction.y*flightSpeed*(direction.y>0?lift:1)-deficit*FLIGHT_TUNING.lowSpeedSink*airControl;
+  let verticalSpeed=direction.y*flightSpeed*(direction.y>0?lift:1)-deficit*FLIGHT_TUNING.lowSpeedSink*airControl;
+  // The levelling envelope otherwise approaches the floor asymptotically.
+  // Inside an established skim, gently finish that contact instead of hovering
+  // a few centimetres above it. Upward intent cancels settling immediately; it
+  // is not a downward spring, terrain-following velocity or flight-wide force.
+  if(!plane.taxiing&&plane.skimming&&heightAboveHullFloor<FLIGHT_TUNING.skimExit&&command.pitch>=0&&plane.pitch<=0)
+    verticalSpeed=Math.min(verticalSpeed,-FLIGHT_TUNING.skimSettleSpeed);
   const nx=plane.pos.x+direction.x*plane.speed*dt;
   const nz=plane.pos.z+direction.z*plane.speed*dt;
   const nextRoll=response.roll;
@@ -88,7 +95,10 @@ function stepFlightSlice(plane,dt,input,ground,obstacles){
   // arc padding; treating that padding as closing motion adds false impacts.
   const ny=plane.pos.y+verticalSpeed*dt;
   const floor=aircraftTerrainFloor({x:nx,y:ny,z:nz},terrainShapes,ground);
-  plane.skimming=ny<=floor+.42;
+  // Hysteresis keeps terrain ripples from retriggering the skim presentation.
+  // This flag never adds adhesion or suppresses a commanded climb: clearance
+  // above the release band exits naturally as the aircraft pulls away.
+  plane.skimming=ny<=floor+(plane.skimming?FLIGHT_TUNING.skimExit:FLIGHT_TUNING.skimEnter);
   let groundImpact=ny<floor?Math.max(0,(floor-startFloor)/dt-verticalSpeed):0;
   const collision=sweepSolidBody(plane.pos,{x:nx-plane.pos.x,y:Math.max(floor,ny)-plane.pos.y,z:nz-plane.pos.z},shapes,obstacles,ground,startFloor);
   const impact=collision.hit,impactSpeed=collision.normalDistance/dt;
