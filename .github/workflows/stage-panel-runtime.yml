@@ -1,0 +1,33 @@
+name: Stage qualified v0.14 runtime
+on:
+  push:
+    branches: [release/panel-followthrough-20261103]
+    paths: [.github/workflows/stage-panel-runtime.yml]
+permissions:
+  contents: write
+jobs:
+  stage:
+    if: github.repository == 'TrentSterling/jetgame'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply runtime-only text patch and verify full Git tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse origin/main)" = '22d0416883650a0a1aac06e361d7a2f30492e69e'
+          echo 'cc2ee6e3c15b5242f0c367b7f0cba58f4c805954663cef8a03bb410136d21231  .release/panels.patch' | sha256sum -c -
+          echo '8518862948339a2de6c18add9f6aec81e06c5d0925f4f718b571cce04326e6b0  src/vehicle-panels.js' | sha256sum -c -
+          git apply --check --unidiff-zero --index .release/panels.patch
+          git apply --unidiff-zero --index .release/panels.patch
+          git rm .release/panels.patch .github/workflows/stage-panel-runtime.yml
+          test "$(git write-tree)" = 'bf59f4018b7c99c193540da380e9110703285a19'
+          test "$(git ls-files | wc -l)" -eq 97
+          for f in src/*.js; do node --check "$f"; done
+          git config user.name 'Jet Game release bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Stage qualified v0.14: loose body panels, physical detachment and tire spray'
+          git push origin HEAD:refs/heads/release/panel-followthrough-20261103
