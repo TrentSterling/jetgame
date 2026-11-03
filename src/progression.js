@@ -9,7 +9,7 @@ export class Progression {
     this.spent+=this.cost(mode);this.levels[mode]++;return true;
   }
   get magazine() { return 32+this.levels.foot*8; }
-  get rifleDamage() { return 52+this.levels.foot*20; }
+  get rifleDamage() { return 68+this.levels.foot*22; }
   get rifleInterval() { return .105*Math.pow(.88,this.levels.foot); }
   get torque() { return 1+this.levels.car*.25; }
   get plow() { return 1+this.levels.car*.2; }

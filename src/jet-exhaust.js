@@ -38,13 +38,13 @@ export function makeJetExhaust(side){
 // the same appearance immediately, without adding any simulation/save fields.
 export function updateJetExhaust(root,body,time){
  const running=body.health>0&&(body.boosting||body.speed>1);
- const boosted=running&&body.boosting;
+ const burn=body.engineBurn??Number(body.boosting===true),boosted=running&&burn>.01;
  for(let i=0;i<root.userData.boost.length;i++){
   const glow=root.userData.boost[i],plume=glow.children[0];
   glow.visible=running;
-  glow.material.color.setScalar(boosted?.86+.035*Math.sin(time*31+i):.018);
+  glow.material.color.setScalar(boosted?.018+burn*(.842+.035*Math.sin(time*31+i)):.018);
   plume.visible=!!boosted;
-  plume.scale.y=.92+.07*Math.sin(time*37+i);
-  plume.material.opacity=.86+.07*Math.sin(time*29+i);
+  plume.scale.y=(.92+.07*Math.sin(time*37+i))*(.6+.4*burn);
+  plume.material.opacity=burn*(.86+.07*Math.sin(time*29+i));
  }
 }

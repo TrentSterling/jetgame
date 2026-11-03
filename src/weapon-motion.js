@@ -48,11 +48,11 @@ export function sampleWeaponPose(out,state){
  const cadence=time*(sprint?17:12);
  // The root keeps the established camera-space rest pose and shove reach.
  out.position.x=.28+(Math.sin(time*1.7)*.003+Math.sin(cadence)*.006*walk)*settle-.07*present-shove*.2;
- out.position.y=-.23+(Math.sin(time*2.3)*.002+Math.sin(cadence*2)*.0035*walk)*settle-.06*sprint-.07*chute-.035*lower+.09*present+.004*kick;
- out.position.z=-.5+.055*kick-.10*present-shove*.38-.007*seat;
- out.rotation.x=.065*kick-.16*sprint-.18*lower+.05*present+.006*Math.sin(cadence)*walk*settle+.013*seat;
+ out.position.y=-.23+(Math.sin(time*2.3)*.002+Math.sin(cadence*2)*.0035*walk)*settle-.06*sprint-.07*chute-.035*lower+.09*present+.012*kick;
+ out.position.z=-.5+.082*kick-.10*present-shove*.38-.007*seat;
+ out.rotation.x=.102*kick-.16*sprint-.18*lower+.05*present+.006*Math.sin(cadence)*walk*settle+.013*seat;
  out.rotation.y=-.025-.18*present+Math.sin(time*1.7)*.002*settle;
- out.rotation.z=-.45*shove-.24*present-.006*kick+Math.sin(cadence)*.006*walk*settle;
+ out.rotation.z=-.45*shove-.24*present-.014*kick+Math.sin(cadence)*.006*walk*settle;
 
  resetPart(out.magazine);resetPart(out.bolt);resetPart(out.supportHand);
  out.magazine.position.x=-.018*extract;

@@ -9,7 +9,7 @@ function extents(p){const e=matrix.makeRotationFromQuaternion(p.mesh.quaternion)
 
 export function initializeWreck(parts,velocity,options={}){
  const random=options.random||Math.random,omega=new T.Vector3().copy(options.angularVelocity||{x:0,y:0,z:0}),base=velocity.clone(),n=new T.Vector3().copy(options.normal||{x:0,y:0,z:0});
- if(n.lengthSq()>.5&&options.impactSpeed>0)base.addScaledVector(n.normalize(),Math.min(8,options.impactSpeed*.12));
+ if(!options.resolveContactPerFragment&&n.lengthSq()>.5&&options.impactSpeed>0)base.addScaledVector(n.normalize(),Math.min(8,options.impactSpeed*.12));
  let totalMass=0;const center=new T.Vector3(),meanKick=new T.Vector3(),spinMomentum=new T.Vector3(),pointInertia=new T.Matrix3().set(0,0,0,0,0,0,0,0,0),ownInertia=pointInertia.clone();
  for(const p of parts){p.mesh.geometry.computeBoundingBox();const b=p.mesh.geometry.boundingBox;p.localCenter=b.getCenter(new T.Vector3());p.half=b.getSize(new T.Vector3()).multiply(p.mesh.scale).multiplyScalar(.5);p.half.set(Math.max(.015,Math.abs(p.half.x)),Math.max(.015,Math.abs(p.half.y)),Math.max(.015,Math.abs(p.half.z)));p.offset=p.localCenter.clone().multiply(p.mesh.scale).applyQuaternion(p.mesh.quaternion);p.position=p.mesh.position.clone().add(p.offset);p.mass=Math.max(.025,Math.min(15,8*p.half.x*p.half.y*p.half.z));p.inertia=new T.Vector3(p.half.y**2+p.half.z**2,p.half.x**2+p.half.z**2,p.half.x**2+p.half.y**2).multiplyScalar(p.mass/3);p.inverseInertia=new T.Vector3(1/p.inertia.x,1/p.inertia.y,1/p.inertia.z);p.inverseQ=p.mesh.quaternion.clone().invert();p.extent=new T.Vector3();p.remainder=0;p.restTime=0;p.sleeping=false;p.physics=true;totalMass+=p.mass;center.addScaledVector(p.position,p.mass);}
  center.multiplyScalar(1/totalMass);

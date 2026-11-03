@@ -1,5 +1,5 @@
 import * as T from 'three/webgpu';
-import {wgslFn,positionWorld,normalLocal,transformNormalToView,attribute,uniform,mix,vec3,cameraPosition,fog,color,smoothstep,max,dFdx,dFdy} from 'three/tsl';
+import {wgslFn,positionWorld,normalWorldGeometry,transformNormalToView,cameraViewMatrix,attribute,uniform,mix,vec3,vec4,cameraPosition,fog,color,smoothstep,max,dFdx,dFdy} from 'three/tsl';
 import {height} from './terrain.js';
 
 const surfaceNoise=wgslFn(`fn surfaceNoise(p:vec2f)->f32{
@@ -13,16 +13,49 @@ export const wetness=wgslFn(`fn wetness(p:vec3f)->f32{
  let variation=.82+.32*surfaceNoise(p.xz*.38)+.12*surfaceNoise(p.xz*1.7);
  return clamp(max(bank,puddle)*1.6*variation,0.0,1.0);
 }`,[surfaceNoise]);
-const sandNormal=wgslFn(`fn sandNormal(p:vec3f,n:vec3f,wet:f32)->vec3f{
- let footprint=max(length(dpdx(p)),length(dpdy(p)));
- let wind=p.x*9.0+p.z*2.1+surfaceNoise(p.xz*.32)*3.0;
- let ripple=cos(wind)*.075*(1.0-wet)*smoothstep(.65,.97,n.y)*(1.0-smoothstep(.08,.5,footprint));
- let grain=(surfaceNoise(p.xz*39.0)-.5)*.045*(1.0-wet)*(1.0-smoothstep(.006,.04,footprint));
- let mud=(surfaceNoise(p.xz*2.8)-.5)*.05*wet;
- return normalize(n+vec3f(ripple+grain+mud,0.0,ripple*.24-grain+mud*.7));
+// Diagnostic controls are material uniforms, never simulation or saved state.
+// x: broad lighting palette, y: ripple relief, z: grain. See SAND-MATERIAL.md.
+export const sandLayers=uniform(new T.Vector3(1,1,1));
+const sandLight=new T.Vector3(-120,100,-200).normalize(); // makeWorld.update sun offset
+export const sandColor=wgslFn(`fn sandColor(p:vec3f,n:vec3f,l:vec3f,enabled:f32)->vec3f{
+ // Art-directed diffuse contrast inspired by Zucconi's Journey recreation.
+ // Keep broad lighting separate from the micro normal and from height bands.
+ let lit=smoothstep(-.10,.38,dot(n*vec3f(1.0,.38,1.0),l));
+ let drift=surfaceNoise(p.xz*.009)*.65+surfaceNoise(p.xz*.024+vec2f(19.0,7.0))*.35;
+ let warm=mix(vec3f(.39,.245,.125),vec3f(.48,.315,.167),drift);
+ let lee=vec3f(.275,.205,.155);
+ return mix(warm,mix(lee,warm,lit),enabled);
 }`,[surfaceNoise]);
+const sandNormal=wgslFn(`fn sandNormal(p:vec3f,n:vec3f,wet:f32,dry:f32,camera:vec3f,l:vec3f,layers:vec3f)->vec3f{
+ let footprint=max(length(dpdx(p.xz)),length(dpdy(p.xz)));
+ let distance=length(p-camera);
+ let wind=vec2f(.8192319,.5734623);let across=vec2f(-wind.y,wind.x);
+ let u=dot(p.xz,wind);let v=dot(p.xz,across);
+ // A differentiable, stationary height profile. Gradient includes the meander.
+ let phase=u*8.975979+sin(v*.37)*1.7+sin(v*.113+u*.09)*.8;
+ let phaseWidth=max(abs(dpdx(phase)),abs(dpdy(phase)))/6.2831853;
+ let resolved=1.0-smoothstep(.12,.40,phaseWidth);
+ let secondResolved=1.0-smoothstep(.12,.40,phaseWidth*2.0);
+ let windward=1.0-smoothstep(-.08,.26,dot(n.xz,wind));
+ let sunlight=smoothstep(.02,.34,dot(n,l));
+ let relief=dry*windward*sunlight*smoothstep(.70,.96,n.y)*(1.0-smoothstep(12.0,65.0,distance));
+ let du=8.975979+.072*cos(v*.113+u*.09);
+ let dv=.629*cos(v*.37)+.0904*cos(v*.113+u*.09);
+ let slope=.0065*(cos(phase)*resolved+.24*cos(phase*2.0+.5)*secondResolved)*layers.y;
+ let gradient=(wind*du+across*dv)*slope*relief;
+ let grain=(surfaceNoise(p.xz*32.0)-.5)*.026*dry*sunlight*windward
+  *(1.0-smoothstep(.004,.018,footprint))*(1.0-smoothstep(4.0,20.0,distance))*layers.z;
+ let g=vec3f(gradient.x+grain,0.0,gradient.y-grain);
+ // Project the world-space height gradient onto the existing surface tangent.
+ let mud=(surfaceNoise(p.xz*2.8)-.5)*.05*wet;
+ return normalize(n-(g-n*dot(g,n))+vec3f(mud,0.0,mud*.7));
+}`,[surfaceNoise]);
+export function sandBase(p,n){return sandColor({p,n,l:vec3(sandLight),enabled:sandLayers.x});}
 export function terrainFinish(material){
- const wet=wetness(positionWorld),asphalt=wgslFn(`fn asphalt(p:vec3f)->f32{return select(1.0,0.0,(abs(p.x)<8.0&&abs(p.z)<160.0)||(abs(p.x-26.0)<18.5&&abs(p.z-63.0)<47.5));}`)(positionWorld),base=material.colorNode;material.colorNode=mix(base,vec3(.055,.031,.014),wet.mul(.83));material.roughnessNode=mix(.92,.29,wet);material.metalness=0;material.normalNode=transformNormalToView(sandNormal({p:positionWorld,n:normalLocal,wet:wet.max(asphalt.oneMinus())}));
+ const wet=wetness(positionWorld),asphalt=wgslFn(`fn asphalt(p:vec3f)->f32{return select(1.0,0.0,(abs(p.x)<8.0&&abs(p.z)<160.0)||(abs(p.x-26.0)<18.5&&abs(p.z-63.0)<47.5));}`)(positionWorld),base=material.colorNode;
+ material.colorNode=mix(base,vec3(.055,.031,.014),wet.mul(.83));material.roughnessNode=mix(mix(.92,.97,asphalt),.29,wet);material.metalness=0;
+ const worldNormal=sandNormal({p:positionWorld,n:normalWorldGeometry,wet:wet.max(asphalt.oneMinus()),dry:wet.oneMinus().mul(asphalt),camera:cameraPosition,l:vec3(sandLight),layers:sandLayers});
+ material.normalNode=cameraViewMatrix.mul(vec4(worldNormal,0)).xyz.normalize();
 }
 export function addSurfaces(scene){
  const clock=uniform(0),waters=[];

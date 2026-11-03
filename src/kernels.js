@@ -1,9 +1,10 @@
 import {terrainWGSL} from './terrain.js';
 import {spawnCrowdWGSL} from './spawn-layout.js';
 import {localCrowdWGSL,localCrowdClearance,localCrowdRecycleDistance} from './local-crowd.js';
+import {CROWD_PRESSURE,CROWD_COUNTERS,reinforcementWGSL} from './crowd-pressure.js';
 import {encounterRings,encounterPacks,encounterRelocationDistance,encounterPursuitDistance} from './regions.js';
 import {
-  Fn, If, Loop, Return, atomicAdd, atomicLoad, atomicStore, instanceIndex,
+  Fn, If, Loop, Return, atomicAdd, atomicSub, atomicLoad, atomicStore, instanceIndex,
   float, uint, vec2, vec3, vec4, abs, atan, clamp, cos, dot, length,
   max, min, mix, normalize, pow, sin, step, wgslFn,
 } from 'three/tsl';
@@ -17,6 +18,7 @@ const cell = wgslFn(`fn cellIndex(p:vec2f)->u32 {
 }`);
 const ground=wgslFn(terrainWGSL);
 const localPosition=wgslFn(localCrowdWGSL);
+const reinforcementPosition=wgslFn(reinforcementWGSL);
 const outsideView=wgslFn(`fn outsideCrowdView(p:vec3f,view:mat4x4f)->bool{
  let q=view*vec4f(p+vec3f(0.0,1.5,0.0),1.0);
  // A margin includes the full articulated body and avoids edge popping.
@@ -25,7 +27,7 @@ const outsideView=wgslFn(`fn outsideCrowdView(p:vec3f,view:mat4x4f)->bool{
 
 export function createKernels(h) {
   const {pos, old, vel, state, blood, density, flow, counters, dt, time,
-    defenseOrigins, defenseRays, defenseIds, botOrigins, botRays, botIds, botCars, botCarsOld, viewProjection, viewEnabled, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
+    pressureScan,pressureOrigin,defenseOrigins, defenseRays, defenseIds, botOrigins, botRays, botIds, botCars, botCarsOld, viewProjection, viewEnabled, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
 
   const cellIndex=p=>cell(p.sub(fieldOrigin));
   const inside=p=>abs(p.x.sub(fieldOrigin.x)).lessThan(188).and(abs(p.y.sub(fieldOrigin.y)).lessThan(188));
@@ -45,14 +47,17 @@ export function createKernels(h) {
   const clear = Fn(() => {
     atomicStore(density.element(instanceIndex), uint(0));
     // Tail scratch slots preserve the eight-storage-buffer device limit.
-    If(instanceIndex.lessThan(2),()=>{atomicStore(density.element(instanceIndex.add(16384)),uint(0));});
+    If(instanceIndex.lessThan(3),()=>{atomicStore(density.element(instanceIndex.add(16384)),uint(0));});
+    If(instanceIndex.lessThan(2),()=>{atomicStore(counters.element(instanceIndex.add(CROWD_COUNTERS.alive)),uint(0));});
   })().compute(128 * 128);
 
   const snapshot = Fn(() => {
     const p = pos.element(instanceIndex);
     old.element(instanceIndex).assign(p);
-    If(state.element(instanceIndex).x.greaterThan(0).and(inside(p.xz)), () => {
-      atomicAdd(density.element(cellIndex(p.xz)), uint(1));
+    If(state.element(instanceIndex).x.greaterThan(0), () => {
+      atomicAdd(counters.element(CROWD_COUNTERS.alive),uint(1));
+      If(length(p.xz.sub(goal.xz)).lessThanEqual(CROWD_PRESSURE.nearbyRadius),()=>{atomicAdd(counters.element(CROWD_COUNTERS.nearby),uint(1));});
+      If(inside(p.xz),()=>{atomicAdd(density.element(cellIndex(p.xz)), uint(1));});
     });
   })().compute(h.count);
 
@@ -63,6 +68,36 @@ export function createKernels(h) {
     const s = state.element(id).toVar();
 
     If(s.x.lessThanEqual(0), () => {
+      // Dead pool slots, rather than an ever-growing actor allocation, supply
+      // later waves. A bounded rotating scan and atomic ticket limit prevent a
+      // mass resurrection after a bomb or a delayed stats readback.
+      const selected=id.add(uint(h.count)).sub(uint(pressureScan.x)).mod(uint(h.count)).lessThan(uint(pressureScan.y));
+      If(streaming.greaterThan(.5).and(pressureScan.z.greaterThan(0)).and(selected).and(s.w.greaterThanEqual(0))
+        .and(v.w.greaterThanEqual(CROWD_PRESSURE.corpseSeconds))
+        .and(length(a.xz.sub(goal.xz)).greaterThan(CROWD_PRESSURE.corpseClearance))
+        .and(viewEnabled.lessThan(.5).or(outsideView(a.xyz,viewProjection))),()=>{
+        const ticket=atomicAdd(density.element(16386),uint(1)).toVar();
+        If(ticket.lessThan(uint(pressureScan.z)),()=>{
+          Loop({start:uint(0),end:uint(16),type:'uint'},({i:attempt})=>{
+            const q=reinforcementPosition(id,attempt,pressureOrigin,uint(pressureScan.w)).toVar();
+            const point=vec3(q.x,ground(q),q.y).toVar();
+            If(inside(q).and(length(q.sub(goal.xz)).greaterThan(CROWD_PRESSURE.spawnClearance))
+              .and(flow.element(cellIndex(q)).w.lessThan(.5))
+              .and(atomicLoad(density.element(cellIndex(q))).lessThan(4))
+              .and(viewEnabled.lessThan(.5).or(outsideView(point,viewProjection))),()=>{
+              const heavy=step(1.5,s.w),runner=step(.5,s.w).sub(heavy);
+              s.x.assign(float(90).sub(runner.mul(30)).add(heavy.mul(250)));s.z.assign(-10);
+              pos.element(id).assign(vec4(point,0));old.element(id).assign(vec4(point,0));
+              state.element(id).assign(s);vel.element(id).assign(vec4(0));
+              for(let i=0;i<3;i++)blood.element(id.mul(3).add(i)).assign(vec4(0,0,0,-10));
+              atomicAdd(counters.element(CROWD_COUNTERS.alive),uint(1));
+              atomicAdd(counters.element(CROWD_COUNTERS.recycled),uint(1));
+              If(length(q.sub(goal.xz)).lessThanEqual(CROWD_PRESSURE.nearbyRadius),()=>{atomicAdd(counters.element(CROWD_COUNTERS.nearby),uint(1));});
+              Return();
+            });
+          });
+        });
+      });
       If(v.w.lessThan(4), () => {
         v.y.subAssign(dt.mul(15));
         a.assign(vec4(a.xyz.add(v.xyz.mul(dt)), a.w.add(dt.mul(v.x).mul(.08))));
@@ -74,10 +109,11 @@ export function createKernels(h) {
           v.x.mulAssign(pow(.09, dt));
           v.z.mulAssign(pow(.09, dt));
         });
-        v.w.addAssign(dt);
         pos.element(id).assign(a);
-        vel.element(id).assign(v);
       });
+      // Age keeps advancing after the short ballistic phase has settled.
+      v.w.assign(min(CROWD_PRESSURE.corpseSeconds+1,v.w.add(dt)));
+      vel.element(id).assign(v);
       Return();
     });
 
@@ -104,15 +140,27 @@ export function createKernels(h) {
     const runner = step(.5,s.w).sub(heavy);
     const bodyScale = float(1).add(heavy.mul(.6));
     const center = a.xyz.add(vec3(0, bodyScale.mul(.95), 0)).toVar();
+    // Follow the same type/seed stretch and runner lean as the rendered head.
+    // A separate ray/sphere test prevents a downward body shot being promoted
+    // to a headshot merely because the muzzle sits above the zombie.
+    const shapeScale=bodyScale.mul(s.y.mul(.28).add(.87));
+    const headY=shapeScale.mul(1.73).mul(runner.mul(.07).add(1));
+    const headZ=shapeScale.mul(-.035).sub(runner.mul(max(0,headY.sub(.8))).mul(.15));
+    const headCenter=a.xyz.add(vec3(sin(a.w).mul(headZ),headY,cos(a.w).mul(headZ))).toVar();
     for(let rayIndex=0;rayIndex<6;rayIndex++){
     const aim=rays.element(rayIndex);
     const along = dot(center.sub(shot.xyz), aim.xyz).toVar();
     const nearest = shot.xyz.add(aim.xyz.mul(clamp(along, 0, aim.w)));
     const rayDistance = length(center.sub(nearest).mul(vec3(1, .48, 1)));
-    If(shot.w.greaterThan(0).and(along.greaterThan(0))
-      .and(along.lessThan(aim.w)).and(rayDistance.lessThan(bodyScale.mul(.48))), () => {
-      damage.addAssign(shot.w);
+    const headAlong=dot(headCenter.sub(shot.xyz),aim.xyz),headNearest=shot.xyz.add(aim.xyz.mul(clamp(headAlong,0,aim.w)));
+    const headHit=headAlong.greaterThan(0).and(headAlong.lessThan(aim.w)).and(length(headCenter.sub(headNearest)).lessThan(shapeScale.mul(.185)));
+    const bodyHit=along.greaterThan(0).and(along.lessThan(aim.w)).and(rayDistance.lessThan(bodyScale.mul(.48)));
+    If(shot.w.greaterThan(0).and(bodyHit.or(headHit)), () => {
+      If(headHit,()=>{damage.addAssign(shot.w.mul(1.65));}).Else(()=>{damage.addAssign(shot.w);});
       impulse.addAssign(aim.xyz.mul(9).add(vec3(0, 3, 0)));
+      // A hit interrupts the attack for a short, readable beat. Heavy enemies
+      // retain more resistance; automatic fire can still control a runner.
+      v.w.assign(max(v.w,float(.17).sub(heavy.mul(.08))));
       cause.assign(uint(1));
       atomicAdd(counters.element(1), uint(1));
       s.z.assign(time.add(.09));
@@ -183,11 +231,16 @@ export function createKernels(h) {
 
     If(damage.greaterThan(0),()=>{
       blood.element(id.mul(3).add(1)).assign(vec4(center,time));
-      blood.element(id.mul(3).add(2)).assign(vec4(impulse.mul(.18),s.y.add(heavy)));
+      // Keep the original seed/type bits; +4 marks a lethal hit for compacted
+      // gore without another buffer, readback or actor-side event queue.
+      const lethal=step(s.x,damage);
+      blood.element(id.mul(3).add(2)).assign(vec4(impulse.mul(.18),s.y.add(heavy).add(lethal.mul(4))));
     });
     s.x.subAssign(damage);
     If(s.x.lessThanEqual(0), () => {
       atomicAdd(counters.element(0), uint(1));
+      atomicSub(counters.element(CROWD_COUNTERS.alive),uint(1));
+      If(length(a.xz.sub(goal.xz)).lessThanEqual(CROWD_PRESSURE.nearbyRadius),()=>{atomicSub(counters.element(CROWD_COUNTERS.nearby),uint(1));});
       If(cause.lessThan(7),()=>{atomicAdd(counters.element(6), uint(float(1).add(heavy.mul(3))));});
       If(cause.equal(2), () => { atomicAdd(counters.element(2), uint(1)); });
       If(cause.equal(3), () => { atomicAdd(counters.element(3), uint(1)); });
@@ -196,7 +249,7 @@ export function createKernels(h) {
       If(cause.equal(8),()=>{atomicAdd(counters.element(13),uint(1));});
       If(cause.equal(9),()=>{atomicAdd(counters.element(14),uint(1));});
       state.element(id).assign(s);
-      vel.element(id).assign(vec4(impulse, 0));
+      vel.element(id).assign(vec4(impulse.mul(1.18), 0));
       Return();
     });
 

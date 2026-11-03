@@ -10,7 +10,7 @@ export function checkpointRegion(id){
 // mission records: the original remains a valid rollback checkpoint at commit.
 export function migrateBotCheckpoint(snapshot){
  const source=snapshot.gpu.counters;
- if(!(source instanceof ArrayBuffer)||![LEGACY_COUNTER_COUNT*4,BOT_COUNTER_COUNT*4].includes(source.byteLength))throw Error('Invalid checkpoint: counters buffer');
+ if(!(source instanceof ArrayBuffer)||![LEGACY_COUNTER_COUNT*4,BOT_COUNTER_COUNT*4,18*4].includes(source.byteLength))throw Error('Invalid checkpoint: counters buffer');
  let counters=source;
  if(source.byteLength===LEGACY_COUNTER_COUNT*4){const padded=new Uint32Array(BOT_COUNTER_COUNT);padded.set(new Uint32Array(source));counters=padded.buffer;}
  const e=snapshot.expeditions,sites=new Map(e.missions?.sites||[]),done=new Set(e.done),repaired=new Set(e.repaired),known=new Set([...done,...repaired,...e.visited,...e.refuges.map(r=>r.id)]);

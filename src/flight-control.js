@@ -6,7 +6,13 @@ const axis=v=>Number.isFinite(v)?clamp(v,-1,1):0;
 const approach=(v,target,maximum)=>v+clamp(target-v,-maximum,maximum);
 export const FLIGHT_TUNING=Object.freeze({gravity:9.81,deadZone:.035,expo:1.5,
  pitchUpLoad:2.4,pitchDownLoad:1.6,loadOnset:4.5,
- bankLimit:1.05,bankRate:1.65,bankAcceleration:6,bankGain:6,inducedDrag:.5});
+ bankLimit:1.05,bankRate:1.65,bankAcceleration:6,bankGain:6,inducedDrag:.5,
+ pitchMin:-.7,pitchMax:.8,liftSpeed:28,minimumLiftSpeed:14,lowSpeedSink:8});
+
+export function flightLift(speed){
+ const t=FLIGHT_TUNING,x=clamp((speed-t.minimumLiftSpeed)/(t.liftSpeed-t.minimumLiftSpeed),0,1);
+ return x*x*(3-2*x);
+}
 
 export function shapeFlightAxis(value){
  const v=axis(value),m=Math.abs(v),t=FLIGHT_TUNING;
@@ -17,16 +23,27 @@ export function flightCommand(input={}){
   turn:clamp(shapeFlightAxis(input.yaw)+shapeFlightAxis(input.bank)*.85,-1,1),
   groundTurn:axis(input.yaw),groundBank:axis(input.bank),boost:input.boost===true};
 }
-export function resetFlightControl(body){body.flightPitchLoad=body.flightRollRate=0;}
+export function resetFlightControl(body){body.flightPitchLoad=body.flightRollRate=0;body.flightRecovery=false;}
 export function validFlightControl(body){
  const t=FLIGHT_TUNING;
  return (body.flightPitchLoad===undefined||Number.isFinite(body.flightPitchLoad)&&body.flightPitchLoad>=-t.pitchDownLoad&&body.flightPitchLoad<=t.pitchUpLoad)
-  &&(body.flightRollRate===undefined||Number.isFinite(body.flightRollRate)&&Math.abs(body.flightRollRate)<=t.bankRate);
+  &&(body.flightRollRate===undefined||Number.isFinite(body.flightRollRate)&&Math.abs(body.flightRollRate)<=t.bankRate)
+  &&(body.flightRecovery===undefined||typeof body.flightRecovery==='boolean');
 }
 export function stepFlightControl(body,dt,command,airborne){
  const t=FLIGHT_TUNING,weight=clamp(airborne,0,1),speed=Math.max(14,body.speed);
  const pitchTarget=-command.pitch*(command.pitch<0?t.pitchUpLoad:t.pitchDownLoad);
  body.flightPitchLoad=approach(body.flightPitchLoad??0,pitchTarget,t.loadOnset*dt);
+ // Anti-windup at the assisted pitch envelope. A saturated pitch integrator
+ // used to retain outward load (and drag) until the opposite mouse command
+ // unloaded it. Only remove load that this step cannot actually integrate;
+ // free-flight onset, bank response and the existing pitch limits stay intact.
+ const pitch=body.pitch??0;
+ if(dt>0){
+  const upper=Math.max(0,t.pitchMax-pitch)*speed/(t.gravity*dt);
+  const lower=Math.min(0,t.pitchMin-pitch)*speed/(t.gravity*dt);
+  body.flightPitchLoad=clamp(body.flightPitchLoad,lower,upper);
+ }
  // Keep the former low ground-bank angle so taxi/skid steering does not ask
  // terrain support to lift the body unnecessarily to clear a lowered wing.
  const groundBank=-(command.groundTurn+command.groundBank)*.48*.3;
@@ -58,5 +75,6 @@ export function flightTelemetry(body){
  const t=FLIGHT_TUNING,pitchLoad=body.flightPitchLoad??0;
  return {pitchLoad,rollRate:body.flightRollRate??0,bank:body.roll,
   load:Math.hypot(Math.cos(body.flightPitch??body.pitch)+pitchLoad,Math.tan(body.roll)),
-  turnRate:t.gravity*Math.tan(body.roll)/Math.max(14,body.speed),speed:body.speed};
+  turnRate:t.gravity*Math.tan(body.roll)/Math.max(14,body.speed),speed:body.speed,
+  lift:flightLift(body.speed),lowAirspeed:!body.taxiing&&body.speed<25,recovering:body.flightRecovery===true};
 }

@@ -4,6 +4,8 @@ import {regionAt,validExpeditionPeople} from './regions.js';
 import {migrateLegacySpawn} from './spawn-migration.js';
 import {BOT_COUNTER_COUNT,LEGACY_COUNTER_COUNT,checkpointRegion,migrateBotCheckpoint} from './bot-save-migration.js';
 import {validFlightControl} from './flight-control.js';
+import {validAircraftSystems} from './aircraft-systems.js';
+import {CROWD_COUNTER_COUNT,migrateCrowdCheckpoint} from './crowd-save-migration.js';
 export const SAVE_SCHEMA=1,WORLD_VERSION='expeditions-1';
 const bodyData=body=>Object.fromEntries(Object.entries(body).filter(([k,v])=>k==='pos'||['number','boolean','string'].includes(typeof v)).map(([k,v])=>[k,k==='pos'?v.toArray():v]));
 const setBody=(body,data)=>{for(const [k,v] of Object.entries(data))if(k==='pos')body.pos.fromArray(v);else body[k]=v;};
@@ -22,7 +24,7 @@ export function validateCheckpoint(s,count){
  if(!s.upgrades||!modes.every(k=>Number.isInteger(s.upgrades.levels?.[k])&&s.upgrades.levels[k]>=0&&s.upgrades.levels[k]<=3)||!['earned','spent','rewards'].every(k=>finite(s.upgrades[k])&&s.upgrades[k]>=0))bad('upgrades');
  if(!s.fleet||!Array.isArray(s.fleet.bodies)||s.fleet.bodies.length>100000||!s.fleet.bodies.every(b=>bodyValid(b)&&typeof b.fleetId==='string'&&['buggy','scout','carrier','jet'].includes(b.kind)))bad('vehicles');
  const ids=new Set(s.fleet.bodies.map(b=>b.fleetId));
- if(!s.fleet.bodies.every(b=>b.kind!=='jet'||validFlightControl(b)))bad('flight response');
+ if(!s.fleet.bodies.every(b=>b.kind!=='jet'||validFlightControl(b)&&validAircraftSystems(b)))bad('flight response');
  if(ids.size!==s.fleet.bodies.length||!['car','jet'].every(k=>ids.has(s.fleet.active?.[k]))||!ids.has('starter-buggy')||!ids.has('starter-jet'))bad('vehicle selection');
  if(!s.fleet.bodies.some(b=>b.fleetId===s.fleet.active.jet&&b.kind==='jet')||!s.fleet.bodies.some(b=>b.fleetId===s.fleet.active.car&&b.kind!=='jet'))bad('vehicle type');
  const e=s.expeditions;
@@ -38,6 +40,9 @@ export function validateCheckpoint(s,count){
    seen.add(entry[0]);const coords=entry[0].split(',').map(Number);if(!coords.every(Number.isSafeInteger))bad('mission coordinates');
    const site=regionAt(...coords),state=entry[1];
    if(!state||typeof state.kit!=='boolean'||!finite(state.signal)||state.signal<0||state.signal>12||!Array.isArray(state.people)||!validExpeditionPeople(site,state.people.length)||!Array.from(state.people).every(p=>p&&finite(p.x)&&finite(p.z)&&Math.hypot(p.x-site.x,p.z-site.z)<150))bad('mission survivors');
+   if(state.alarmed!==undefined&&typeof state.alarmed!=='boolean')bad('mission alarm');
+   if(state.defense!==undefined&&(!finite(state.defense)||state.defense<0||state.defense>30))bad('mission defense');
+   if(state.supplyMask!==undefined&&(!Number.isInteger(state.supplyMask)||state.supplyMask<0||state.supplyMask>3))bad('mission supplies');
    if(e.party?.id===entry[0]&&e.party.count!==state.people.length)bad('passenger mission count');
   }
  }
@@ -48,7 +53,7 @@ export function validateCheckpoint(s,count){
   const b=s.gpu?.[key];if(!(b instanceof ArrayBuffer)||b.byteLength!==length*4)bad(key+' buffer');
   if(Type===Float32Array&&!new Type(b).every(Number.isFinite))bad(key+' values');
  }
- const counters=s.gpu?.counters;if(!(counters instanceof ArrayBuffer)||![LEGACY_COUNTER_COUNT*4,BOT_COUNTER_COUNT*4].includes(counters.byteLength))bad('counters buffer');
+ const counters=s.gpu?.counters;if(!(counters instanceof ArrayBuffer)||![LEGACY_COUNTER_COUNT*4,BOT_COUNTER_COUNT*4,CROWD_COUNTER_COUNT*4].includes(counters.byteLength))bad('counters buffer');
  return s;
 }
 
@@ -85,8 +90,8 @@ export class GameSave{
  }
  restore(s){
   const {horde,fleet,expeditions:e,player,upgrades,combat,course,writeRuntime}=this.game;validateCheckpoint(s,horde.count);
-  const migration=migrateLegacySpawn(migrateBotCheckpoint(s));s=validateCheckpoint(migration.snapshot,horde.count);
-  if(horde.counters.value.array.length!==BOT_COUNTER_COUNT)bad('runtime counters');
+  const migration=migrateLegacySpawn(migrateBotCheckpoint(s));s=validateCheckpoint(migrateCrowdCheckpoint(migration.snapshot),horde.count);
+  if(horde.counters.value.array.length!==CROWD_COUNTER_COUNT)bad('runtime counters');
   this.spawnMigration=migration.moved;
   fleet.restore(s.fleet);setBody(player,s.player);Object.assign(upgrades,structuredClone(s.upgrades));Object.assign(combat,structuredClone(s.combat));
   for(const k of ['done','repaired','visited'])e[k]=new Set(s.expeditions[k]);
@@ -101,6 +106,7 @@ export class GameSave{
    horde.renderer.backend.updateAttribute(a);
   }
   horde.old.value.array.set(new Float32Array(s.gpu.pos));horde.old.value.needsUpdate=true;horde.streaming.value=s.streaming??1;horde.time.value=s.runtime.time;
+  horde.pressure?.reset(s.runtime.time);
   writeRuntime(s.runtime);this.game.defenses?.restore(s.defenses,s.runtime.time,horde);
   const botOrigin=s.runtime.mode==='foot'?player.pos:fleet.active[s.runtime.mode].body.pos;
   this.game.bots?.reset(s.runtime.time,botOrigin);horde.clearBotInputs?.();

@@ -1,9 +1,9 @@
 import {TerrainStream} from './terrain-stream.js';
 import * as T from 'three/webgpu';
-import {mix,color,positionGeometry,positionWorld,clamp,normalWorld,wgslFn,texture,vec2,attribute} from 'three/tsl';
+import {mix,color,positionGeometry,positionWorld,clamp,normalWorldGeometry,wgslFn,texture,vec2,attribute} from 'three/tsl';
 import {box,cylinder,segment,material} from './art.js';
 import {height,obstacles,SIZE} from './nav.js';
-import {terrainFinish,addSurfaces} from './surfaces.js';
+import {terrainFinish,addSurfaces,sandBase} from './surfaces.js';
 import {noise} from './terrain.js';
 import {trackPoints} from './track-layout.js';
 import {compositeStatic} from './composite.js';
@@ -24,9 +24,8 @@ export function makeWorld(scene){
   let runway=select(0.0,1.0,abs(p.x)<8.0&&abs(p.z)<160.0);
   let apron=select(0.0,1.0,abs(p.x-26.0)<18.5&&abs(p.z-63.0)<47.5);
   let grain=fract(sin(dot(floor(p.xz*4.0),vec2f(12.9898,78.233)))*43758.5453);
-  let strata=.92+.08*sin(p.y*1.25+sin(p.x*.017+p.z*.013)*2.5);
-  let slope=1.0-smoothstep(.55,.95,n.y);
-  var c=mix(base,vec3f(.25,.135,.075)*strata,slope*.6)*( .91+grain*.15 );
+  // The sand palette and relief live in surfaces.js; keep track and paint here.
+  var c=base;
   c=mix(c,vec3f(.21,.15,.085)*(.85+grain*.3),gravel*.88);
   c=mix(c,vec3f(.040,.057,.048),max(runway,apron));
   let dash=(p.z+161.0)-floor((p.z+161.0)/14.0)*14.0;
@@ -36,7 +35,7 @@ export function makeWorld(scene){
   let ring=abs(length(p.xz-vec2f(23.0,85.0))-4.08)<.08;
   return mix(c,vec3f(.53,.46,.24),max(max(line,taxi),select(0.0,1.0,ring)));
  }`);
- const groundMat=new T.MeshStandardNodeMaterial({roughness:.97});groundMat.colorNode=paint({p:positionWorld,n:normalWorld,base:attribute('color','vec3'),gravel:texture(mask,vec2(positionWorld.x.div(768).add(.5),positionWorld.z.div(768).add(.5))).r});
+ const groundMat=new T.MeshStandardNodeMaterial({roughness:.97});groundMat.colorNode=paint({p:positionWorld,n:normalWorldGeometry,base:sandBase(positionWorld,normalWorldGeometry),gravel:texture(mask,vec2(positionWorld.x.div(768).add(.5),positionWorld.z.div(768).add(.5))).r});
  terrainFinish(groundMat);const surfaces=addSurfaces(scene);
  const terrain=new T.Group();terrain.name='Terrain';terrain.userData={heightfieldResolution:128,workers:4};scene.add(terrain);
  const stream=new TerrainStream(terrain,groundMat),ready=stream.ready;

@@ -39,6 +39,16 @@ export function survivorPath(start,end,obstacles){
  }
  return [];
 }
+// Choose a reachable side/rear approach instead of making the entire team
+// converge on a single point that may be inside a wall or behind the vehicle.
+export function boardingApproach(person,body,obstacles,index=0){
+ const yaw=body.yaw||0,right={x:Math.cos(yaw),z:-Math.sin(yaw)},back={x:Math.sin(yaw),z:Math.cos(yaw)};
+ const candidates=[[-3.2,1.4],[3.2,1.4],[-1.3,4.2],[1.3,4.2]].map(([side,rear],slot)=>({
+  x:body.pos.x+right.x*side+back.x*rear,z:body.pos.z+right.z*side+back.z*rear,slot,
+ })).sort((a,b)=>Math.hypot(a.x-person.x,a.z-person.z)-Math.hypot(b.x-person.x,b.z-person.z)+(a.slot===index%4?-.7:0)-(b.slot===index%4?-.7:0));
+ for(const candidate of candidates)if(survivorPath(person,candidate,obstacles).length)return candidate;
+ return null;
+}
 export function moveSurvivor(person,target,dt,speed,obstacles,cache){
  dt=Math.max(0,Math.min(dt,.1));
  cache.cooldown=(cache.cooldown||0)-dt;
@@ -51,7 +61,7 @@ export function moveSurvivor(person,target,dt,speed,obstacles,cache){
   const point=cache.path[0],dx=point.x-person.x,dz=point.z-person.z,distance=Math.hypot(dx,dz);
   if(distance<.08){cache.path.shift();continue;}
   const step=Math.min(distance,budget),result=slideMove(person,dx/distance*step,dz/distance*step,RADIUS,obstacles),travel=Math.hypot(result.dx,result.dz);
-  moved+=travel;budget-=step;if(travel<step*.5)break;
+  moved+=travel;budget-=step;if(travel<step*.5){cache.cooldown=0;break;}
  }
  return moved;
 }
