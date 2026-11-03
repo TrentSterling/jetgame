@@ -52,6 +52,9 @@ export class BotPlayers{
   }
   for(const c of this.cars){
    c.mesh.userData.rammerDamage?.reset();
+   c.playerControlled=false;c.mesh.userData.occupantSeat='driver';
+   Object.assign(c.body,{boost:1,boostDelay:0,boostLocked:false,boosting:false,impactAt:0});
+   for(const flame of c.mesh.userData.boost||[])flame.visible=false;
    const position=spawn(CAR_SITES[c.index],BOT_CAR_RADIUS);resetBotDriver(c,position,0,time);c.body.health=100;c.target=null;c.old.copy(c.body.pos);c.mesh.visible=true;poseBotVehicle(c.mesh,c.body,0,this.ground);
   }
   this.clearInputs(this.horde);
@@ -72,6 +75,7 @@ export class BotPlayers{
    const threat=distance(target,player);if(threat>130)continue;
    for(const f of this.foot){const d=distance(target,f.pos);if(d>1&&d<54)retainCandidate(choices[f.index],target,threat*.55+d);}
    for(const c of this.cars){
+    if(c.playerControlled)continue;
     const d=distance(target,c.body.pos);if(d>76||threat>108)continue;
     const score=c.kind==='escort'?threat*1.8+d*.25:c.kind==='rammer'?d+threat*.2:d+threat*.35;
     retainCandidate(choices[c.index+2],target,score);
@@ -91,6 +95,7 @@ export class BotPlayers{
    if(f.target&&distance(f.pos,player)<17&&distance(f.pos,player)>4&&distance(f.pos,f.target)>9)f.goal={x:f.pos.x,z:f.pos.z};
   }
   for(const c of this.cars){
+   if(c.playerControlled)continue;
    c.target=choices[c.index+2][0]?copyTarget(choices[c.index+2][0].target):null;
    // A rammer commits briefly to its straight charge. Circler and escort
    // recompute their flanking/intercept points at the same bounded cadence.
@@ -108,7 +113,7 @@ export class BotPlayers{
   if(this.generation!==h.generation||time<this.lastTime){
    this.generation=h.generation;this.nextDecision=time;this.lastDecision=-Infinity;
    for(const f of this.foot){f.target=null;f.nextFire=Math.max(time+.25,f.nextFire>time+1?time+.25:f.nextFire);f.flashUntil=0;resetBotNavigation(f.nav);}
-   for(const c of this.cars){c.target=null;c.goal=null;c.path=[];c.nextDecision=c.nextPlan=c.progressAt=time;c.reverseUntil=c.yieldTime=c.stuckTime=0;c.lastProgress={x:c.body.pos.x,z:c.body.pos.z};c.old.copy(c.body.pos);}
+   for(const c of this.cars){if(c.playerControlled)continue;c.target=null;c.goal=null;c.path=[];c.nextDecision=c.nextPlan=c.progressAt=time;c.reverseUntil=c.yieldTime=c.stuckTime=0;c.lastProgress={x:c.body.pos.x,z:c.body.pos.z};c.old.copy(c.body.pos);}
   }
   this.lastTime=time;
   const fresh=freshBotSnapshot(context.snapshot,h.generation,time);if(!fresh)this.staleFrames++;
@@ -139,6 +144,9 @@ export class BotPlayers{
    this.fx.tracer(f.origin,f.point,'#addfd0',.07,.022);this.fx.sound('gun',f.origin);
   }
   for(const c of this.cars){
+   // Main advances a borrowed car and sends its sweep through the player slot.
+   // clearInputs above keeps the corresponding allied slot harmless this frame.
+   if(c.playerControlled)continue;
    c.old.copy(c.body.pos);
    if((c.body.health??100)<=0||!c.mesh.visible)continue;
    const friendlies=[...external.filter(f=>f.passenger!==c),...this.foot.map(f=>({x:f.pos.x,z:f.pos.z,r:.65})),...this.cars.filter(o=>o!==c).map(o=>({x:o.body.pos.x,z:o.body.pos.z,r:2.35}))];
@@ -157,5 +165,5 @@ export class BotPlayers{
  }
  report(){return {enabled:this.enabled,footCount:this.foot.length,carCount:this.cars.length,rounds:this.rounds,decisions:this.decisions,generation:this.generation,blockedShots:this.blockedShots,staleFrames:this.staleFrames,
   foot:this.foot.map(f=>({id:f.index,position:f.pos.toArray(),shots:f.shots,target:f.target?.id??null,distance:f.distance,plans:f.nav.plans})),
-  cars:this.cars.map(c=>({kind:c.kind,position:c.body.pos.toArray(),yaw:c.body.yaw,speed:c.body.speed,target:c.target?.id??null,mode:c.mode,goal:c.goal?{...c.goal}:null,recoveries:c.recoveries,plans:c.plans,brakes:c.brakes,distance:c.distance,blocked:c.blocked}))};}
+  cars:this.cars.map(c=>({kind:c.kind,position:c.body.pos.toArray(),yaw:c.body.yaw,speed:c.body.speed,controlledBy:c.playerControlled?'player':'ally',target:c.target?.id??null,mode:c.mode,goal:c.goal?{...c.goal}:null,recoveries:c.recoveries,plans:c.plans,brakes:c.brakes,distance:c.distance,blocked:c.blocked}))};}
 }

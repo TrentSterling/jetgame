@@ -1,7 +1,7 @@
 import {freeSpot,slideMove} from './collision.js';
 
-// The right front seat belongs to the player; the NPC keeps the left seat and
-// its own driving state. Coordinates match the buggy's YXZ body transform.
+// Right front eye anchor while the ally drives. SeatHandoff moves that ally
+// here when the player takes the left driving seat. Coordinates match the buggy's YXZ body transform.
 export const PASSENGER_EYE=Object.freeze({x:.45,y:1.93,z:.30});
 export function passengerSeat(body,out={}){
  const p=body.pitch||0,r=body.roll||0,y=body.yaw||0,s=PASSENGER_EYE;

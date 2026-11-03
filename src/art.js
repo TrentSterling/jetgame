@@ -2,6 +2,7 @@ import * as T from 'three/webgpu';
 import {buildJetHero} from './jet-hero-art.js';
 import {attachJetDamage} from './jet-damage.js';
 import {compositeRigid} from './composite.js';
+import {createSurvivorRig,poseSurvivorRig,disposeSurvivorRig} from './survivor-rig.js';
 
 export const material=(color,metalness=0,roughness=.8)=>new T.MeshStandardMaterial({color,metalness,roughness});
 const mat={steel:material('#344348',.6,.4),dark:material('#10191d',.25,.65),rubber:material('#192026'),sand:material('#a0916d'),orange:material('#e69c3a',.35,.5),glass:material('#76b5b7',.6,.22),light:new T.MeshBasicMaterial({color:'#ffdc85'})};
@@ -129,7 +130,7 @@ export function weapon(){
  return g;
 }
 
-export function buggy({batch=true}={}){const g=new T.Group();
+export function buggy({batch=true,occupantVariant=1,crew=false}={}){const g=new T.Group();
  // Exposed tube frame, low nose and independent wheel pivots.
  box(g,[1.85,.24,3.35],[0,.87,0],mat.dark);
  box(g,[1.7,.28,1.15],[0,1.07,-1.25],mat.orange).rotation.x=.12;
@@ -164,26 +165,26 @@ export function buggy({batch=true}={}){const g=new T.Group();
   const spring=new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(coil),96,.018,4,false),mat.orange);g.add(spring);
   suspension.push({pivot,arm,shock,spring,armRoot:new T.Vector3(x*.6,.7,z),shockRoot:new T.Vector3(x*.63,1.2,z+.23),compression:0});
  }
- const driver=new T.Group();driver.position.set(-.45,1.08,.3);g.add(driver);
- const suit=material('#586c72'),helmet=material('#dca046'),visor=material('#17272d',.5,.2);
- box(driver,[.4,.55,.26],[0,.36,0],suit).rotation.x=-.1;
- const head=new T.Group();head.position.set(0,.85,-.025);driver.add(head);
- const shell=new T.Mesh(new T.SphereGeometry(.24,12,8),helmet);shell.scale.set(.9,1.07,1);head.add(shell);shell.castShadow=true;
- box(head,[.35,.13,.09],[0,.015,-.205],visor);
- for(const side of [-1,1]){
-  segment(driver,[side*.14,.02,.03],[side*.15,-.06,-.38],.11,suit);
-  segment(driver,[side*.15,-.06,-.38],[side*.15,-.36,-.65],.085,suit);
-  box(driver,[.16,.12,.26],[side*.15,-.39,-.71],mat.dark);
-  segment(driver,[side*.23,.57,0],[side*.28,.3,-.23],.078,suit);
-  segment(driver,[side*.28,.3,-.23],[side*.17,.43,-.55],.065,suit);
-  box(driver,[.105,.105,.12],[side*.17,.43,-.55],mat.dark);
-  segment(driver,[side*.13,.6,-.15],[side*.08,.06,-.16],.025,mat.orange);
- }
+ const driver=createSurvivorRig({role:'driver',variant:occupantVariant,helmet:true});driver.position.set(-.45,1.08,.3);g.add(driver);
  const steering=new T.Mesh(new T.TorusGeometry(.22,.025,6,12),mat.dark);steering.position.set(-.45,1.52,-.28);steering.rotation.x=-.35;g.add(steering);
- driver.visible=false;g.userData.driver=driver;g.userData.head=head;
+ driver.visible=false;g.userData.driver=driver;g.userData.head=driver.userData.head;g.userData.steering=steering;
+ if(crew){const player=createSurvivorRig({role:'driver',variant:3,helmet:false});player.name='Player at borrowed vehicle wheel';player.position.set(-.45,1.08,.3);player.visible=false;g.add(player);g.userData.playerDriver=player;}
+ poseVehicleOccupant(g,{steer:0,roll:0},{visible:false});
  g.userData.suspension=suspension;g.userData.wheels=wheels;g.userData.wheelPivots=wheelPivots;g.userData.boost=[];
  for(const s of [-1,1]){const flame=new T.Mesh(new T.ConeGeometry(.19,1.6,8),new T.MeshBasicMaterial({color:'#72dfff'}));flame.rotation.x=Math.PI/2;flame.position.set(s*.63,.9,2.4);g.add(flame);g.userData.boost.push(flame);}
  if(batch)batchVehicle(g);return g;
+}
+
+// The allied driver keeps the same skeleton and identity during a seat swap.
+// A borrowed vehicle gains a separate visible player, left at the wheel.
+export function poseVehicleOccupant(vehicle,body,{seat=vehicle.userData.occupantSeat||'driver',visible=true,dt=0}={}){
+ const u=vehicle.userData,driver=u.driver;if(!driver?.userData.rig)return vehicle;
+ const right=seat==='passenger',roll=Number.isFinite(body.roll)?body.roll:0,steer=Number.isFinite(body.steer)?body.steer:0;
+ driver.visible=visible;driver.position.set(right?.45:-.45,1.08,.3);driver.rotation.set(0,0,-roll*.35);
+ poseSurvivorRig(driver,{seated:true,seat:right?'passenger':'driver',steer,dt,lookYaw:right?-.10:0});
+ if(u.steering)u.steering.rotation.z=-steer*.65;
+ if(u.playerDriver){const player=u.playerDriver;player.visible=visible&&right;player.position.set(-.45,1.08,.3);player.rotation.set(0,0,-roll*.35);if(player.visible)poseSurvivorRig(player,{seated:true,seat:'driver',steer,dt});}
+ return vehicle;
 }
 
 // The playable JET/015 keeps the original root, weapon/exhaust anchors and
@@ -194,7 +195,7 @@ export function jet({batch=true}={}){
 
 export function batchVehicle(root){
  const u=root.userData,exclude=new Set([...(u.boost||[]),...(u.wheelPivots||[]),...(u.guns||[])]);
- if(u.driver)exclude.add(u.driver);
+ if(u.driver)exclude.add(u.driver);if(u.playerDriver)exclude.add(u.playerDriver);
  for(const leg of u.suspension||[])for(const key of ['arm','shock','spring'])exclude.add(leg[key]);
  for(const wheel of u.wheels||[])compositeRigid(wheel);
  for(const gun of u.guns||[])compositeRigid(gun,new Set(u.flashes));
@@ -215,4 +216,4 @@ export function parachute(){
 
 // Static palette materials are shared across models; everything else belongs
 // to the vehicle instance, including driver clothing and exhaust materials.
-export function disposeVehicle(mesh){const shared=new Set(Object.values(mat)),geometries=new Set(),materials=new Set();mesh.traverse(o=>{if(o.isMesh){geometries.add(o.geometry);for(const m of Array.isArray(o.material)?o.material:[o.material])if(!shared.has(m))materials.add(m);}});for(const g of geometries)g.dispose();for(const m of materials)m.dispose();}
+export function disposeVehicle(mesh){for(const key of ['driver','playerDriver'])if(mesh.userData[key]?.userData.rig)disposeSurvivorRig(mesh.userData[key]);const shared=new Set(Object.values(mat)),geometries=new Set(),materials=new Set();mesh.traverse(o=>{if(o.isMesh){geometries.add(o.geometry);for(const m of Array.isArray(o.material)?o.material:[o.material])if(!shared.has(m))materials.add(m);}});for(const g of geometries)g.dispose();for(const m of materials)m.dispose();}

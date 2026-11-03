@@ -11,7 +11,7 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),finite=(n,f=0)=>Number.isFinite(n
 const distanceLabel=n=>n>=1000?(n/1000).toFixed(1)+' KM':Math.round(Math.max(0,n))+' M';
 const linear=hex=>{const color=new T.Color(hex);return Object.freeze([color.r,color.g,color.b]);};
 export const HUD_COLORS=Object.freeze({ink:linear('#f7f1dc'),muted:linear('#a8babd'),amber:linear('#ffc46b'),cyan:linear('#7fe3db'),red:linear('#ff7966'),dark:linear('#071419'),panel:linear('#10242b'),edge:linear('#38545a')});
-const fields={screen:'game',mode:'foot',modeLabel:'',health:100,shielded:false,ammo:32,ammoMax:32,ammoSuffix:'/ ∞',weapon:'CARBINE',speed:0,altitude:0,missiles:0,bombs:0,boost:1,boosting:false,boostLocked:false,reload:0,mission:'FIND SURVIVORS',missionDetail:'',action:'',actionKey:'',interactionProgress:0,message:'',hit:0,damage:0,kills:0,rescued:0,relays:0,scrap:0,respawnMode:'foot',respawnSeconds:0,ready:false,deployAvailable:false,keyboardOnly:false,progress:0,phase:'BUILDING BATTLEFIELD',phaseDetail:'Preparing the world, vehicles and survivors before you enter.',phaseIndex:0,phaseCount:0,sceneFade:0,error:'',saveStatus:'LOCAL EXPEDITION CHECKPOINTS',saveAvailable:true,continuing:false,muted:false,version:'0.9.0'};
+const fields={screen:'game',mode:'foot',modeLabel:'',health:100,shielded:false,ammo:32,ammoMax:32,ammoSuffix:'/ ∞',weapon:'CARBINE',speed:0,altitude:0,missiles:0,bombs:0,boost:1,boosting:false,boostLocked:false,reload:0,mission:'FIND SURVIVORS',missionDetail:'',action:'',actionKey:'',seatAction:'',interactionProgress:0,message:'',hit:0,damage:0,kills:0,rescued:0,relays:0,scrap:0,respawnMode:'foot',respawnSeconds:0,ready:false,deployAvailable:false,keyboardOnly:false,progress:0,phase:'BUILDING BATTLEFIELD',phaseDetail:'Preparing the world, vehicles and survivors before you enter.',phaseIndex:0,phaseCount:0,sceneFade:0,error:'',saveStatus:'LOCAL EXPEDITION CHECKPOINTS',saveAvailable:true,continuing:false,muted:false,version:'0.9.0'};
 const reticleFields={x:0,y:0};
 const waypointFields={x:0,y:0,label:'SURVIVORS',distance:0,behind:false,inView:null,bearing:0,direction:'',turnDegrees:0};
 const aimFields={x:0,y:0,strength:0,locked:false};
@@ -168,6 +168,7 @@ export class GpuHUD{
   if(!isFoot)this._text('RMB '+finite(s.missiles)+(isJet?' / SPACE '+finite(s.bombs):' MISSILES'),0,115,11,c.muted,'center',270);
   if(isJet)this._text(Math.round(finite(s.altitude))+' M',0,57,10,c.muted,'center',90);
   if(s.action){const y=isFoot?119:141;this._text((s.actionKey?s.actionKey+'  ':'')+s.action,0,y,13,c.cyan,'center',390);if(s.interactionProgress>0)this._bar(0,y+22,150,s.interactionProgress,c.cyan);}else if(!s.message)this._text('H CONTROLS  /  ESC PAUSE',0,isFoot?119:141,9,c.muted,'center',300,.7);
+  if(s.seatAction)this._text('Q  '+s.seatAction,0,isFoot?145:167,11,c.amber,'center',350);
   if(s.aimVisible)this._aim();if(isJet&&s.jetVisible)this._jet();if(s.waypointVisible)this._waypoint();
  }
  _missionBand(rx,ry){
@@ -269,8 +270,8 @@ export class GpuHUD{
  }
  _help(){
   const c=HUD_COLORS;this._text('FIELD CONTROLS',0,-225,24,c.ink,'center',500);
-  const rows=[['WASD','MOVE / DRIVE / THROTTLE'],['MOUSE','AIM / STEER JET'],['LMB','FIRE'],['RMB','SHOVE / VEHICLE MISSILES'],['SHIFT','SPRINT / BOOST / CHUTE DIVE'],['SPACE','JUMP / HANDBRAKE / BOMB'],['C / CTRL','CROUCH / SLIDE'],['JET: C','CENTER FLIGHT COMMAND'],['E','ENTER / EXIT / EJECT'],['F HOLD','REPAIR SURVIVOR RADIO'],['R','RELOAD / DEPLOY'],['Z / X / V','RIFLE / TORQUE / BOMB UPGRADE']];
-  for(let i=0;i<rows.length;i++){const y=-172+i*27;this._text(rows[i][0],-249,y,11,c.cyan,'left',125);this._text(rows[i][1],-106,y,12,c.ink,'left',360);}
+  const rows=[['WASD','MOVE / DRIVE / THROTTLE'],['MOUSE','AIM / STEER JET'],['LMB','FIRE'],['RMB','SHOVE / VEHICLE MISSILES'],['SHIFT','SPRINT / BOOST / CHUTE DIVE'],['SPACE','JUMP / HANDBRAKE / BOMB'],['C / CTRL','CROUCH / SLIDE'],['JET: C','CENTER FLIGHT COMMAND'],['E','ENTER / EXIT / EJECT'],['Q','SWAP SEATS WITH ALLIED DRIVER'],['F HOLD','REPAIR SURVIVOR RADIO'],['R','RELOAD / DEPLOY'],['Z / X / V','RIFLE / TORQUE / BOMB UPGRADE']];
+  for(let i=0;i<rows.length;i++){const y=-172+i*25;this._text(rows[i][0],-249,y,11,c.cyan,'left',125);this._text(rows[i][1],-106,y,12,c.ink,'left',360);}
   this._text('IN AIR: SPACE OPENS OR CUTS THE PARACHUTE',0,168,11,c.muted,'center',500);this._text('AFTER DEFEAT: 1 / 2 / 3 CHOOSES YOUR INSERTION',0,192,10,c.muted,'center',510);
   this._button('back','BACK',0,251,220,42);
  }

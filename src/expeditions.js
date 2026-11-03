@@ -4,35 +4,22 @@ import {height,obstacles,navigationObstacles} from './nav.js';
 import {regionsNear,expeditionOffer} from './regions.js';
 import {compositeStatic} from './composite.js';
 import {moveSurvivor,boardingApproach} from './survivor-motion.js';
-import {survivorGeometry,survivorRestPose} from './bot-art.js';
+import {SURVIVOR_VARIANTS,createSurvivorRig,poseSurvivorRig,disposeSurvivorRig} from './survivor-rig.js';
 import {missionRules,missionDefaults,SUPPLY_POINTS,supplyCount,survivorSpeed} from './mission-rules.js';
 
 function survivor(index,reuse){
- const rest=survivorRestPose(index),m=reuse?.[rest.variant].pop()||new T.Mesh(survivorGeometry(index),new T.MeshStandardMaterial({vertexColors:true,roughness:.85})),geo=m.geometry;
- if(m.userData.rest){
-  // A departing walker may be mid-stride or hidden after boarding. Restore the
-  // entire pose before attaching it to a different site, including dirty ranges.
-  for(const [name,values] of [['position',rest.positions],['normal',rest.normals]]){const a=geo.getAttribute(name);a.array.set(values);a.clearUpdateRanges();a.needsUpdate=true;}
- }else geo.boundingSphere=new T.Sphere(new T.Vector3(0,.95,0),1.6);
- m.position.set(0,0,0);m.rotation.set(0,Math.PI,0,'XYZ');m.scale.set(1,1,1);m.visible=true;m.castShadow=m.receiveShadow=true;m.matrixAutoUpdate=m.matrixWorldAutoUpdate=true;
- m.userData={rest:rest.positions,normals:rest.normals,parts:geo.getAttribute('part').array,limbs:rest.limbs,variant:rest.variant,path:{},clock:index,walking:false};
- m.updateMatrix();return m;
+ const variant=index%SURVIVOR_VARIANTS,m=reuse?.[variant].pop()||createSurvivorRig({variant,role:'survivor'});
+ m.position.set(0,0,0);m.rotation.set(0,Math.PI,0,'XYZ');m.scale.set(1,1,1);m.visible=true;m.matrixAutoUpdate=m.matrixWorldAutoUpdate=true;
+ // Reset the pooled joint pose and navigation state, preserving GPU buffers.
+ m.traverse(o=>{o.matrixAutoUpdate=o.matrixWorldAutoUpdate=true;});
+ m.userData.path={};m.userData.clock=index;m.userData.walking=false;
+ poseSurvivorRig(m,{walking:0,time:index});m.updateMatrix();return m;
 }
-function poseSurvivor(mesh,walking,dt){
- const data=mesh.userData;if(!walking&&!data.walking)return;data.clock+=dt*8;data.walking=walking;
- const p=mesh.geometry.getAttribute('position'),n=mesh.geometry.getAttribute('normal');
- // Head and torso are static. Only limb components become dirty; compute each
- // joint rotation once and let Three upload the explicit moving ranges.
- p.clearUpdateRanges();n.clearUpdateRanges();
- for(const {part,start,end} of data.limbs){
-  const angle=walking?Math.sin(data.clock+(part===1||part===4?0:Math.PI))*(part<3?.3:.45):0,c=Math.cos(angle),s=Math.sin(angle),pivot=part<3?1.4:.82;
-  for(let i=start;i<end;i++){const j=i*3;
-   p.setXYZ(i,data.rest[j],pivot+(data.rest[j+1]-pivot)*c-data.rest[j+2]*s,(data.rest[j+1]-pivot)*s+data.rest[j+2]*c);
-   n.setXYZ(i,data.normals[j],data.normals[j+1]*c-data.normals[j+2]*s,data.normals[j+1]*s+data.normals[j+2]*c);
-  }
-  p.addUpdateRange(start*3,(end-start)*3);n.addUpdateRange(start*3,(end-start)*3);
- }
- p.needsUpdate=n.needsUpdate=true;
+function poseSurvivor(mesh,speed,dt){
+ const moving=Number.isFinite(speed)?Math.max(0,speed):speed?4:0;
+ if(!moving&&!mesh.userData.walking)return;
+ mesh.userData.clock+=dt;mesh.userData.walking=moving>0;
+ poseSurvivorRig(mesh,{walking:Math.min(1,moving/6),dt,time:mesh.userData.clock});
 }
 const missionName=site=>missionRules(site).name;
 export class Expeditions{
@@ -44,14 +31,14 @@ export class Expeditions{
   const nearby=regionsNear(pos.x,pos.z),wanted=new Set(nearby.map(s=>s.id));
   // Reuse is bounded to this transition. Pinned party sites never enter the
   // pool, and unused meshes are disposed before updateSites returns.
-  const reuse=[[],[]];
+  const reuse=Array.from({length:SURVIVOR_VARIANTS},()=>[]);
   try{
    for(const [id,site] of this.sites)if(!wanted.has(id)&&this.party?.id!==id){
     for(const m of site.people){site.group.remove(m);reuse[m.userData.variant].push(m);}
     this.scene.remove(site.group);const materials=new Set();site.group.traverse(o=>{if(o.isMesh||o.isLine){o.geometry.dispose();materials.add(o.material);}});for(const m of materials)m.dispose();for(const b of site.boxes){for(const list of [obstacles,navigationObstacles]){const i=list.indexOf(b);if(i>=0)list.splice(i,1);}}for(const m of site.solids){const i=this.solids.indexOf(m);if(i>=0)this.solids.splice(i,1);}this.sites.delete(id);
    }
    for(const spec of nearby)if(!this.sites.has(spec.id))this.sites.set(spec.id,this.build(spec,reuse));
-  }finally{for(const bucket of reuse)for(const m of bucket){m.geometry.dispose();m.material.dispose();}}
+  }finally{for(const bucket of reuse)for(const m of bucket)disposeSurvivorRig(m);}
  }
  build(spec,reuse){
   const savedState=this.missions.get(spec.id),group=new T.Group(),site={...spec,group,boxes:[],solids:[],people:[],count:savedState?.people.length??expeditionOffer(spec).people,reward:expeditionOffer(spec).reward};group.position.set(spec.x,height(spec.x,spec.z),spec.z);this.scene.add(group);site.ready=this.repaired.has(site.id);
@@ -100,11 +87,11 @@ export class Expeditions{
   }
   site.count=site.people.length;
   site.state=missionDefaults(site,savedState||this.freshState(site));this.missions.set(site.id,site.state);
-  const dynamic=new Set([beacon,...site.people]);if(site.defenseRing)dynamic.add(site.defenseRing);site.kit?.traverse(o=>dynamic.add(o));for(const cargo of site.supplies||[])cargo.traverse(o=>dynamic.add(o));compositeStatic(group,dynamic);this.syncPeople(site);this.onAdd?.(group);return site;
+  const dynamic=new Set([beacon]);for(const person of site.people)person.traverse(o=>dynamic.add(o));if(site.defenseRing)dynamic.add(site.defenseRing);site.kit?.traverse(o=>dynamic.add(o));for(const cargo of site.supplies||[])cargo.traverse(o=>dynamic.add(o));compositeStatic(group,dynamic);this.syncPeople(site);this.onAdd?.(group);return site;
  }
  freshState(site){return {kit:false,signal:0,alarmed:false,defense:0,supplyMask:0,people:site.people.map((_,i)=>({x:site.x-4+i*2,z:site.z-1}))};}
  setPeopleCount(site,count){
-  while(site.people.length>count){const mesh=site.people.pop();site.group.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
+  while(site.people.length>count){const mesh=site.people.pop();site.group.remove(mesh);disposeSurvivorRig(mesh);}
   while(site.people.length<count){const mesh=survivor(site.people.length);site.group.add(mesh);site.people.push(mesh);this.onAdd?.(mesh);}
   site.count=count;
  }
@@ -138,7 +125,7 @@ export class Expeditions{
    const step=moveSurvivor(person,destination,dt,survivorSpeed(site.kind,gap,collecting),navigationObstacles,cache);
    if(step>.0001)mesh.rotation.y=Math.atan2(before.x-person.x,before.z-person.z);
    const boarded=collecting&&destination&&Math.hypot(person.x-destination.x,person.z-destination.z)<.85;if(boarded)arrived++;
-   mesh.visible=!boarded;poseSurvivor(mesh,step>.0001,dt);
+   mesh.visible=!boarded;poseSurvivor(mesh,dt>0&&step>.0001?step/dt:0,dt);
   }
   this.syncPeople(site,false);
   if(collecting){this.boarding={id:site.id,vehicle:body.fleetId,arrived,total:site.count};if(arrived===site.count){
