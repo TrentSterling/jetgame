@@ -238,20 +238,20 @@ function handleUIAction(action){
  if(action.startsWith('respawn:')){const next=action.slice(8);if(['foot','car','jet'].includes(next))respawnMode=next;updateHUD();return;}
  if(action.startsWith('upgrade:')){if(buyUpgrade(action.slice(8)))checkpointPause();}
 }
-function syncVehicles(dt=0){
+function syncVehicles(dt=0,impact=false){
  if(handoff.valid())driverAnchor.copy(car.pos);
  carMesh.position.copy(car.pos);carMesh.position.y+=car.suspension;carMesh.rotation.order='YXZ';carMesh.rotation.set(car.pitch,car.yaw,car.roll);
  poseVehicleOccupant(carMesh,car,{seat:handoff.active?'passenger':'driver',visible:mode==='car'&&!dead,dt});
  const wheelAngle=-drivingSteeringAngle(car);
  for(const wheel of carMesh.userData.wheelPivots)wheel.rotation.y=wheel.position.z<0?wheelAngle:0;
  poseSuspension(carMesh,car,rideHeight,dt);
- attachVehicleDamage(carMesh).sync(car);
+ attachVehicleDamage(carMesh).sync(car,dt,vehicleFX,impact);
  jetMesh.position.copy(plane.pos);jetMesh.rotation.order='YXZ';jetMesh.rotation.set(plane.flightPitch,plane.yaw,plane.roll);
  updateJetExhaust(jetMesh,plane,time);
 }
 function breakVehicle(which,impact=null){
  const body=which==='car'?car:plane,mesh=which==='car'?carMesh:jetMesh;if(!mesh.visible)return;
- syncVehicles();if(which==='car')carMesh.userData.vehicleDamage?.prepareWreck(body);const motion=which==='jet'?aircraftBreakupMotion(plane,impact):null,velocity=which==='car'?new T.Vector3(car.vx,car.vy,car.vz):motion?new T.Vector3().copy(motion.velocity):flightDirection().multiplyScalar(plane.speed);
+ syncVehicles(0,which==='car');if(which==='car')carMesh.userData.vehicleDamage?.prepareWreck(body);const motion=which==='jet'?aircraftBreakupMotion(plane,impact):null,velocity=which==='car'?new T.Vector3(car.vx,car.vy,car.vz):motion?new T.Vector3().copy(motion.velocity):flightDirection().multiplyScalar(plane.speed);
  vehicleFX.breakup(mesh,velocity,which==='jet'?{physical:true,origin:body.pos,...motion}:undefined);mesh.visible=false;body.speed=body.vx=body.vz=body.vy=0;body.boosting=false;
  fx.explosion(body.pos,10);pendingBlasts.push(new T.Vector4(body.pos.x,body.pos.y,body.pos.z,12));
 }
@@ -292,7 +292,7 @@ function restart(){
 }
 function saveRuntime(){return {mode:handoff.active&&!dead?'foot':mode,time,ammo,bombs,bombAt,rearm,shotAt,reload,dead,won,score,previousHits,previousContacts,previousCar,previousFoot,previousCab,previousJet,deathAt,respawnAt,respawnMode,shieldUntil,hurtUntil,respawns,jumps,gunRounds,bombImpacts,deathPoint:deathPoint.toArray()};}
 function restoreRuntime(s){
- resetFlightDamage(plane);ordnance.clear();pendingBlasts.length=0;for(const b of activeBombs){scene.remove(b.mesh);b.mesh.geometry.dispose();b.mesh.material.dispose();}activeBombs.length=0;
+ resetFlightDamage(plane);vehicleFX.clear();ordnance.clear();pendingBlasts.length=0;for(const b of activeBombs){scene.remove(b.mesh);b.mesh.geometry.dispose();b.mesh.material.dispose();}activeBombs.length=0;
  releaseDriver();passenger=null;
  hurtUntil=s.hurtUntil??0;
  ({mode,time,ammo,bombs,bombAt,rearm,shotAt,reload,dead,won,score,previousHits,previousContacts,previousCar,previousFoot,previousCab,previousJet,deathAt,respawnAt,respawnMode,shieldUntil,respawns,jumps,gunRounds,bombImpacts}=s);deathPoint.fromArray(s.deathPoint);
@@ -506,7 +506,7 @@ function updateHUD(){
   upgrades:[...['foot','car','jet'].map((id,i)=>({id,key:['Z','X','V'][i],name:['CARBINE','TORQUE','STRIKE KIT'][i],detail:['Damage, magazine, fire rate','Acceleration and crowd impact','Bombs, blast and rearm'][i],level:upgrades.levels[id],cost:upgrades.cost(id),available:!dead&&upgrades.scrap>=upgrades.cost(id)&&upgrades.levels[id]<3})),{id:'cluster',key:'B',name:CLUSTER_UNLOCK.name,detail:'4 bomblets · Slower rearm',level:upgrades.equipment.cluster?1:0,cost:CLUSTER_UNLOCK.cost,equipped:upgrades.missileWarhead==='cluster',available:!dead&&(upgrades.equipment.cluster||upgrades.scrap>=CLUSTER_UNLOCK.cost)}],
   respawnMode,respawnSeconds:Math.max(0,respawnAt-time),deployAvailable:dead&&time>=deathAt+.65,keyboardOnly:document.pointerLockElement===canvas,
   ready:!!window.HordeStartup?.ready,progress:window.HordeStartup?.progress||0,phase:window.HordeStartup?.phase||'Starting graphics',phaseDetail:window.HordeStartup?.phaseDetail||'Preparing the game renderer.',phaseIndex:window.HordeStartup?.phaseIndex||0,phaseCount:window.HordeStartup?.phaseCount||14,error:window.bootError||'',sceneFade:ui.sceneFade,
-  saveStatus:ui.saveStatus,saveAvailable:!!saves?.enabled&&!saves.blocked,continuing:ui.continuing,muted:fx.mixer.muted,version:'0.13.0',
+  saveStatus:ui.saveStatus,saveAvailable:!!saves?.enabled&&!saves.blocked,continuing:ui.continuing,muted:fx.mixer.muted,version:'0.14.0',
  });
 }
 function renderFrame(dt=0){

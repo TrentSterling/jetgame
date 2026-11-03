@@ -7,7 +7,7 @@ const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
 const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a));return t*t*(3-2*t);};
 // Small, smooth, non-authoritative deformation field. The protected cockpit,
 // wheels, crew and suspension anchors never move. No center-of-mass feedback.
-function deform(out,x,y,z,state){
+export function deformVehiclePoint(out,x,y,z,state){
  const lateral=clamp((x+1.25)/2.5),front=state[0]*(1-lateral)+state[1]*lateral,rear=state[2]*(1-lateral)+state[3]*lateral;
  const f=smooth(.65,2.7,-z),r=smooth(.78,2.25,z),side=smooth(.65,1.15,Math.abs(x))*(1-smooth(1.3,1.9,Math.abs(z)));
  const protect=1-smooth(1.6,2.2,y),dside=x<0?state[4]:state[5];
@@ -22,6 +22,7 @@ export function attachVehicleDamage(root){
  root.updateWorldMatrix(true,true);
  const excluded=new Set([root.userData.driver,root.userData.playerDriver,root.userData.steering,...(root.userData.wheelPivots||[]),...(root.userData.boost||[])]);
  for(const leg of root.userData.suspension||[])for(const key of ['arm','shock','spring'])excluded.add(leg[key]);
+ for(const o of root.userData.vehiclePanels?.excluded||[])excluded.add(o);
  const inverse=root.matrixWorld.clone().invert(),visible=[],originals=[],materials=new Map(),p=new T.Vector3(),nx=new T.Vector3(),ny=new T.Vector3(),nz=new T.Vector3(),normal=new T.Vector3(),result=new T.Vector3(),cofactor=new T.Vector3(),originalNormal=new T.Vector3();
  const visit=o=>{if(excluded.has(o))return;if(o.isMesh&&!o.isSkinnedMesh&&o.geometry?.attributes.position&&(o.visible||o.userData.rigidSource)){
   // Capture the independent breakup originals as well as their visible batch.
@@ -43,7 +44,7 @@ export function attachVehicleDamage(root){
   if(reset){a.array.set(entry.base);n.array.set(entry.baseN);if(entry.baseColor)color.array.set(entry.baseColor);}
   else for(let i=0;i<a.count;i++){
    const j=i*3,x=entry.rest[j],y=entry.rest[j+1],z=entry.rest[j+2];
-   deform(p,x,y,z,state);deform(nx,x+e,y,z,state).sub(p).multiplyScalar(1/e);deform(ny,x,y+e,z,state).sub(p).multiplyScalar(1/e);deform(nz,x,y,z+e,state).sub(p).multiplyScalar(1/e);
+   deformVehiclePoint(p,x,y,z,state);deformVehiclePoint(nx,x+e,y,z,state).sub(p).multiplyScalar(1/e);deformVehiclePoint(ny,x,y+e,z,state).sub(p).multiplyScalar(1/e);deformVehiclePoint(nz,x,y,z+e,state).sub(p).multiplyScalar(1/e);
    originalNormal.fromArray(entry.restN,j);normal.copy(cofactor.crossVectors(ny,nz)).multiplyScalar(originalNormal.x).addScaledVector(cofactor.crossVectors(nz,nx),originalNormal.y).addScaledVector(cofactor.crossVectors(nx,ny),originalNormal.z).applyMatrix3(entry.normalBack).normalize();
    result.copy(p).applyMatrix4(entry.inv);a.setXYZ(i,result.x,result.y,result.z);n.setXYZ(i,normal.x,normal.y,normal.z);
    if(entry.baseColor){
@@ -56,11 +57,11 @@ export function attachVehicleDamage(root){
   a.needsUpdate=n.needsUpdate=true;if(entry.baseColor)color.needsUpdate=true;g.computeBoundingBox();g.computeBoundingSphere();
  }
  const api={
-  sync(body){for(let i=0;i<6;i++)state[i]=clamp(body[DENT_KEYS[i]]||0);state[6]=clamp(body.bloodCoat||0);
+  sync(body,dt=0,effects=null,impact=false){root.userData.vehiclePanels?.sync(body,dt,effects,impact);for(let i=0;i<6;i++)state[i]=clamp(body[DENT_KEYS[i]]||0);state[6]=clamp(body.bloodCoat||0);
    if(state.every((v,i)=>Math.abs(v-last[i])<.005))return false;
    const t=performance.now(),reset=state.every(v=>v===0);for(const entry of visible)apply(entry,reset);last.set(state);updates++;maxUpdateMs=Math.max(maxUpdateMs,performance.now()-t);return true;
   },
-  prepareWreck(body){api.sync(body);for(const entry of originals)apply(entry,state.every(v=>v===0));},
+  prepareWreck(body){api.sync(body);root.userData.vehiclePanels?.prepareWreck();for(const entry of originals)apply(entry,state.every(v=>v===0));},
   report(){return {zones:Array.from(state.subarray(0,6)),blood:state[6],updates,vertices,maxUpdateMs,scope:'Bounded cosmetic deformation; arcade body/collision and cockpit anchors unchanged'};}
  };
  vertices=visible.reduce((n,e)=>n+e.mesh.geometry.attributes.position.count,0);root.userData.vehicleDamage=api;return api;

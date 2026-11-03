@@ -1,6 +1,7 @@
 import * as T from 'three/webgpu';
 import {buildJetHero} from './jet-hero-art.js';
 import {attachJetDamage} from './jet-damage.js';
+import {installVehiclePanels} from './vehicle-panels.js';
 import {compositeRigid} from './composite.js';
 import {createSurvivorRig,poseSurvivorRig,disposeSurvivorRig} from './survivor-rig.js';
 
@@ -130,11 +131,12 @@ export function weapon(){
  return g;
 }
 
-export function buggy({batch=true,occupantVariant=1,crew=false}={}){const g=new T.Group();
+export function buggy({batch=true,occupantVariant=1,crew=false,articulatedPanels=true}={}){const g=new T.Group();
  // Exposed tube frame, low nose and independent wheel pivots.
+ const panels=[];
  box(g,[1.85,.24,3.35],[0,.87,0],mat.dark);
- box(g,[1.7,.28,1.15],[0,1.07,-1.25],mat.orange).rotation.x=.12;
- box(g,[1.5,.36,.8],[0,1.06,1.45],mat.steel);
+ const hood=box(g,[1.7,.28,1.15],[0,1.07,-1.25],mat.orange);hood.rotation.x=.12;panels[0]=hood;
+ panels[1]=box(g,[1.5,.36,.8],[0,1.06,1.45],mat.steel);
  box(g,[1.6,.07,.9],[0,2.26,.55],mat.orange);
  for(const s of [-1,1]){
   segment(g,[s*.86,.9,-1.7],[s*.86,1.05,1.65],.085,mat.steel);
@@ -143,7 +145,7 @@ export function buggy({batch=true,occupantVariant=1,crew=false}={}){const g=new 
   segment(g,[s*.82,2.3,-.55],[s*.82,2.3,1],.065,mat.steel);
   segment(g,[s*.82,2.3,1],[s*.86,1.04,1.9],.065,mat.steel);
   segment(g,[s*.86,1.0,-.85],[s*.86,1.45,1.1],.055,mat.steel);
-  box(g,[.18,.22,1.4],[s*.88,1.0,.1],mat.orange);
+  panels[s<0?2:3]=box(g,[.18,.22,1.4],[s*.88,1.0,.1],mat.orange);
   box(g,[.36,.2,.12],[s*.58,1.13,-1.91],mat.light);
   box(g,[.55,.15,.55],[s*.45,1.07,.35],mat.dark);
   box(g,[.55,.68,.15],[s*.45,1.4,.64],mat.dark).rotation.x=-.12;
@@ -172,6 +174,7 @@ export function buggy({batch=true,occupantVariant=1,crew=false}={}){const g=new 
  poseVehicleOccupant(g,{steer:0,roll:0},{visible:false});
  g.userData.suspension=suspension;g.userData.wheels=wheels;g.userData.wheelPivots=wheelPivots;g.userData.boost=[];
  for(const s of [-1,1]){const flame=new T.Mesh(new T.ConeGeometry(.19,1.6,8),new T.MeshBasicMaterial({color:'#72dfff'}));flame.rotation.x=Math.PI/2;flame.position.set(s*.63,.9,2.4);g.add(flame);g.userData.boost.push(flame);}
+ if(articulatedPanels)installVehiclePanels(g,panels);
  if(batch)batchVehicle(g);return g;
 }
 
@@ -194,7 +197,7 @@ export function jet({batch=true}={}){
 }
 
 export function batchVehicle(root){
- const u=root.userData,exclude=new Set([...(u.boost||[]),...(u.wheelPivots||[]),...(u.guns||[])]);
+ const u=root.userData,exclude=new Set([...(u.vehiclePanels?.excluded||[]),...(u.boost||[]),...(u.wheelPivots||[]),...(u.guns||[])]);
  if(u.driver)exclude.add(u.driver);if(u.playerDriver)exclude.add(u.playerDriver);
  for(const leg of u.suspension||[])for(const key of ['arm','shock','spring'])exclude.add(leg[key]);
  for(const wheel of u.wheels||[])compositeRigid(wheel);

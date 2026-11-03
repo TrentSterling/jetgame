@@ -76,7 +76,7 @@ function batchPainted(root,material,exclude=new Set(),spans=null){
 
 export function createBotVehicle(kind='rammer'){
  if(!['rammer','circler','escort'].includes(kind))throw new RangeError(`Unknown bot vehicle kind: ${kind}`);
- const mesh=buggy({batch:false,occupantVariant:kind==='rammer'?0:kind==='circler'?1:2,crew:true}),u=mesh.userData,material=paintedMaterial(),extra=new PaintedPart();
+ const mesh=buggy({batch:false,occupantVariant:kind==='rammer'?0:kind==='circler'?1:2,crew:true,articulatedPanels:false}),u=mesh.userData,material=paintedMaterial(),extra=new PaintedPart();
  mesh.name=`Wasteland ${kind}`;
  const steel='#515d55',dark='#303a36',rust='#945f3d',bone='#baae86',paint=kind==='rammer'?'#9a6648':kind==='circler'?'#53817c':'#7f8764';
  // Repaint only instance-owned geometry by baking its colors below. Avoid
