@@ -11,9 +11,9 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),finite=(n,f=0)=>Number.isFinite(n
 const distanceLabel=n=>n>=1000?(n/1000).toFixed(1)+' KM':Math.round(Math.max(0,n))+' M';
 const linear=hex=>{const color=new T.Color(hex);return Object.freeze([color.r,color.g,color.b]);};
 export const HUD_COLORS=Object.freeze({ink:linear('#f7f1dc'),muted:linear('#a8babd'),amber:linear('#ffc46b'),cyan:linear('#7fe3db'),red:linear('#ff7966'),dark:linear('#071419'),panel:linear('#10242b'),edge:linear('#38545a')});
-const fields={screen:'game',mode:'foot',modeLabel:'',health:100,shielded:false,ammo:32,ammoMax:32,ammoSuffix:'/ ∞',weapon:'CARBINE',speed:0,altitude:0,missiles:0,bombs:0,boost:1,boosting:false,boostLocked:false,reload:0,mission:'FIND SURVIVORS',missionDetail:'',action:'',actionKey:'',interactionProgress:0,message:'',hit:0,damage:0,kills:0,rescued:0,relays:0,scrap:0,respawnMode:'foot',respawnSeconds:0,ready:false,deployAvailable:false,keyboardOnly:false,progress:0,phase:'BUILDING BATTLEFIELD',error:'',saveStatus:'LOCAL EXPEDITION CHECKPOINTS',saveAvailable:true,continuing:false,muted:false,version:'0.9.0'};
+const fields={screen:'game',mode:'foot',modeLabel:'',health:100,shielded:false,ammo:32,ammoMax:32,ammoSuffix:'/ ∞',weapon:'CARBINE',speed:0,altitude:0,missiles:0,bombs:0,boost:1,boosting:false,boostLocked:false,reload:0,mission:'FIND SURVIVORS',missionDetail:'',action:'',actionKey:'',interactionProgress:0,message:'',hit:0,damage:0,kills:0,rescued:0,relays:0,scrap:0,respawnMode:'foot',respawnSeconds:0,ready:false,deployAvailable:false,keyboardOnly:false,progress:0,phase:'BUILDING BATTLEFIELD',phaseDetail:'Preparing the world, vehicles and survivors before you enter.',phaseIndex:0,phaseCount:0,sceneFade:0,error:'',saveStatus:'LOCAL EXPEDITION CHECKPOINTS',saveAvailable:true,continuing:false,muted:false,version:'0.9.0'};
 const reticleFields={x:0,y:0};
-const waypointFields={x:0,y:0,label:'SURVIVORS',distance:0,behind:false};
+const waypointFields={x:0,y:0,label:'SURVIVORS',distance:0,behind:false,inView:null,bearing:0,direction:'',turnDegrees:0};
 const aimFields={x:0,y:0,strength:0,locked:false};
 const jetFields={commandX:0,commandY:0,noseX:0,noseY:0,limited:false,limitLabel:'',recovery:false,throttle:0};
 const upgradeFields={id:'',key:'',name:'',level:0,cost:0,detail:'',available:false};
@@ -58,7 +58,7 @@ export class GpuHUD{
   this.state={...fields,reticle:{...reticleFields},waypoint:{...waypointFields},aim:{...aimFields},jet:{...jetFields},upgrades:Array.from({length:3},()=>({...upgradeFields})),reticleVisible:false,waypointVisible:false,aimVisible:false,jetVisible:false,upgradeCount:0};
   this.regions=Array.from({length:GPU_HUD_MAX_HITS},()=>({x:0,y:0,w:0,h:0,action:'',disabled:false}));
   this.texts=Array.from({length:64},()=>({text:'',x:0,y:0,width:0,height:0}));
-  this.points={reticle:{x:0,y:0,visible:false},aim:{x:0,y:0,visible:false},command:{x:0,y:0,visible:false},nose:{x:0,y:0,visible:false},waypoint:{x:0,y:0,visible:false}};
+  this.points={reticle:{x:0,y:0,visible:false},aim:{x:0,y:0,visible:false},command:{x:0,y:0,visible:false},nose:{x:0,y:0,visible:false},waypoint:{x:0,y:0,visible:false},objectiveCue:{x:0,y:0,visible:false}};
   this.width=1;this.height=1;this.scale=1;this.count=0;this.hitCount=0;this.textCount=0;this.glyphCount=0;this.hover=null;this.focus=null;this.rebuilds=0;this.dropped=0;this.dirty=true;this.disposed=false;
   this.missionMode='';this.missionY=-107;
   this.resize(1280,720);
@@ -110,10 +110,10 @@ export class GpuHUD{
  _brackets(x,y,size,color,alpha=1){const a=size/2,t=5;for(const side of [-1,1]){this._line(x+side*a,y-a,x+side*(a-t),y-a,1.5,color,alpha);this._line(x+side*a,y-a,x+side*a,y-a+t,1.5,color,alpha);this._line(x+side*a,y+a,x+side*(a-t),y+a,1.5,color,alpha);this._line(x+side*a,y+a,x+side*a,y+a-t,1.5,color,alpha);}}
  _text(value,x,y,size=16,color=HUD_COLORS.ink,align='center',maxWidth=600,alpha=1,shadow=this.state.screen==='game'){
   let text=normalizeHudText(value),width=hudTextWidth(text,size);if(width>maxWidth){const budget=(maxWidth-hudTextWidth('...',size))*HUD_FONT_HEIGHT/size;let used=0,end=0;while(end<text.length&&used+(HUD_FONT[text[end]]||HUD_FONT['?']).advance<=budget){used+=(HUD_FONT[text[end]]||HUD_FONT['?']).advance;end++;}text=text.slice(0,end)+'...';width=hudTextWidth(text,size);}
-  const left=x-(align==='center'?width/2:align==='right'?width:0),unit=size/HUD_FONT_HEIGHT,weight=Math.max(.8,size*.078);
+  const left=x-(align==='center'?width/2:align==='right'?width:0),unit=size/HUD_FONT_HEIGHT,weight=Math.max(1.05,size*.10);
   if(this.textCount<this.texts.length){const t=this.texts[this.textCount++];t.text=text;t.x=this.cx+left*this.scale;t.y=this.cy+y*this.scale;t.width=width*this.scale;t.height=size*this.scale;}
   for(let pass=shadow?0:1;pass<2;pass++){
-   let cursor=left;const c=pass?color:HUD_COLORS.dark,opacity=pass?alpha:.9*alpha,offset=pass?0:1,thickness=pass?weight:weight+1.3;
+   let cursor=left;const c=pass?color:HUD_COLORS.dark,opacity=pass?alpha:.92*alpha,offset=0,thickness=pass?weight:weight+1.2;
    for(let i=0;i<text.length;i++){
     const glyph=HUD_FONT[text[i]]||HUD_FONT['?'],stroke=glyph.strokes;
     if(pass===1&&stroke.length)this.glyphCount++;
@@ -122,6 +122,12 @@ export class GpuHUD{
    }
   }
   return width;
+ }
+ _paragraph(value,x,y,size,color,maxWidth,lineHeight=22,maxLines=3){
+  const words=normalizeHudText(value).split(/\s+/),lines=[];let line='';
+  for(const word of words){const next=line?line+' '+word:word;if(line&&hudTextWidth(next,size)>maxWidth){lines.push(line);line=word;}else line=next;}
+  if(line)lines.push(line);
+  for(let i=0;i<Math.min(maxLines,lines.length);i++)this._text(lines[i]+(i===maxLines-1&&lines.length>maxLines?'...':''),x,y+i*lineHeight,size,color,'center',maxWidth);
  }
  _bar(x,y,width,value,color,alpha=1){this._rect(x,y,width,3,HUD_COLORS.edge,alpha*.8,1.5);const fill=clamp(finite(value),0,1)*width;if(fill>0)this._rect(x-(width-fill)/2,y,fill,3,color,alpha,1.5);}
  _button(action,label,x,y,w=230,h=46,options={}){
@@ -133,9 +139,10 @@ export class GpuHUD{
  }
  _build(){
   this.count=0;this.hitCount=0;this.textCount=0;this.glyphCount=0;this.dropped=0;this.dirty=false;this.rebuilds++;const state=this.state;
-  this.points.reticle.visible=this.points.aim.visible=this.points.command.visible=this.points.nose.visible=this.points.waypoint.visible=false;
+  for(const point of Object.values(this.points))point.visible=false;
   this.scale=state.screen==='game'?Math.max(.2,Math.min(this.width/510,this.height/340,1.1)):Math.max(.2,Math.min(this.width/680,this.height/700,1.4));
   if(state.screen==='game')this._game();else this._menu();
+  if((state.screen==='game'||state.screen==='death')&&state.sceneFade>0)this._shape(this.width/2,this.height/2,this.width,this.height,HUD_COLORS.dark,clamp(finite(state.sceneFade),0,1));
   this.geometry.instanceCount=this.count;
   for(const a of [this.rect,this.rotation,this.shape,this.ink]){a.clearUpdateRanges();a.addUpdateRange(0,this.count*a.itemSize);a.needsUpdate=true;}
  }
@@ -161,26 +168,58 @@ export class GpuHUD{
   if(!isFoot)this._text('RMB '+finite(s.missiles)+(isJet?' / SPACE '+finite(s.bombs):' MISSILES'),0,115,11,c.muted,'center',270);
   if(isJet)this._text(Math.round(finite(s.altitude))+' M',0,57,10,c.muted,'center',90);
   if(s.action){const y=isFoot?119:141;this._text((s.actionKey?s.actionKey+'  ':'')+s.action,0,y,13,c.cyan,'center',390);if(s.interactionProgress>0)this._bar(0,y+22,150,s.interactionProgress,c.cyan);}else if(!s.message)this._text('H CONTROLS  /  ESC PAUSE',0,isFoot?119:141,9,c.muted,'center',300,.7);
-  if(s.waypointVisible)this._waypoint();if(s.aimVisible)this._aim();if(isJet&&s.jetVisible)this._jet();
+  if(s.aimVisible)this._aim();if(isJet&&s.jetVisible)this._jet();if(s.waypointVisible)this._waypoint();
  }
  _missionBand(rx,ry){
-  const state=this.state,base=state.mode==='foot'?-107:-167;let ceiling=Math.abs(rx)<230?ry-40:Infinity;
+  const state=this.state,base=(state.mode==='foot'?-107:-167)-(state.waypointVisible?60:0),bottom=state.waypointVisible?87:35;let ceiling=Math.abs(rx)<230?ry-40:Infinity;
   if(state.aimVisible&&(state.aim.locked||state.aim.strength>0)){
    const x=clamp(finite(state.aim.x),-.95,.95)*this.width/(2*this.scale),y=-clamp(finite(state.aim.y),-.95,.95)*this.height/(2*this.scale);
    if(Math.abs(x)<230)ceiling=Math.min(ceiling,y-40);
   }
   // 48-unit steps with a 14-unit return margin keep small camera movement
   // from making mission text follow or oscillate around the physical sight.
-  const wanted=base-48*Math.max(0,Math.ceil((base+35-ceiling)/48));
+  const wanted=base-48*Math.max(0,Math.ceil((base+bottom-ceiling)/48));
   if(this.missionMode!==state.mode){this.missionMode=state.mode;this.missionY=wanted;}
-  else if(wanted<this.missionY||wanted>this.missionY&&wanted+35<ceiling-14)this.missionY=wanted;
+  else if(wanted<this.missionY||wanted>this.missionY&&wanted+bottom<ceiling-14)this.missionY=wanted;
   this.missionY=Math.max(-this.cy/this.scale+18,this.missionY);
  }
  _waypoint(){
-  const p=this.state.waypoint,c=HUD_COLORS;let x=finite(p.x)*this.width/(2*this.scale),y=-finite(p.y)*this.height/(2*this.scale);if(p.behind){x=-x;y=-y;if(Math.hypot(x,y)<1)x=1;}
-  const length=Math.hypot(x,y),limit=60;if(length>limit){x*=limit/length;y*=limit/length;}if(Math.hypot(x,y)<34){x=-55;y=-22;}y=Math.min(20,y);
-  this._point('waypoint',x,y);
-  this._diamond(x,y,4,c.amber,.95,1.3);this._text(distanceLabel(finite(p.distance)),x+(x>=0?12:-12),y-5,9,c.amber,x>=0?'left':'right',80);
+  const p=this.state.waypoint,c=HUD_COLORS,inView=p.inView==null?!p.behind&&Math.abs(p.x)<=1&&Math.abs(p.y)<=1:p.inView;
+  let direction=p.direction||(p.behind?'behind':inView?'ahead':p.x<-.05?'left':p.x>.05?'right':p.y>0?'above':'below');
+  const compact=this.missionY<=-this.cy/this.scale+18.01,label=p.label||'OBJECTIVE',distance=distanceLabel(finite(p.distance)),cueY=this.missionY+(compact?53:66),cueHeight=compact?34:43;
+  this._rect(0,cueY,354,cueHeight,c.dark,.76,5);this._rect(0,cueY,354,cueHeight,c.amber,.3,5,1);
+  const angle=direction==='left'?-Math.PI/2:direction==='right'?Math.PI/2:direction==='behind'?Math.PI:direction==='below'?Math.PI:0;
+  const ax=-155,ay=cueY,cs=Math.cos(angle),sn=Math.sin(angle),rotate=(x,y)=>[ax+x*cs-y*sn,ay+x*sn+y*cs];
+  const a=rotate(-6,2),b=rotate(0,-5),d=rotate(6,2);this._line(...a,...b,2.6,c.amber);this._line(...b,...d,2.6,c.amber);
+  if(direction==='behind'){const e=rotate(-6,9),f=rotate(0,2),g=rotate(6,9);this._line(...e,...f,2,c.amber);this._line(...f,...g,2,c.amber);}
+  this._point('objectiveCue',ax,ay);
+  const instruction={ahead:'OBJECTIVE AHEAD',left:'TURN LEFT',right:'TURN RIGHT',behind:'TURN AROUND',above:'LOOK UP',below:'LOOK DOWN'}[direction]||'OBJECTIVE AHEAD';
+  this._text(instruction,-132,cueY-(compact?13:14),11,c.amber,'left',298);this._text(label+'  ·  '+distance,-132,cueY+(compact?3:5),11,c.ink,'left',298);
+  if(!inView)return;
+  // The world pin stays exactly at the projected destination. Only its label
+  // may move to remain legible, with a leader preserving the correspondence.
+  const x=finite(p.x)*this.width/(2*this.scale),y=-finite(p.y)*this.height/(2*this.scale),halfW=this.cx/this.scale,halfH=this.cy/this.scale;
+  this._point('waypoint',x,y);this._diamond(x,y,7,c.dark,1,4.2);this._diamond(x,y,7,c.amber,1,2);
+  const text=label+'  ·  '+distance,labelW=Math.min(250,hudTextWidth(normalizeHudText(text),11)+20),labelH=27;
+  let lx=clamp(x,-halfW+labelW/2+12,halfW-labelW/2-12),ly=clamp(y-27,-halfH+labelH/2+12,halfH-labelH/2-12);
+  const clashes=(cx,cy)=>{
+   const l=cx-labelW/2,r=cx+labelW/2,t=cy-labelH/2,b=cy+labelH/2;
+   if(l<183&&r>-183&&t<cueY+cueHeight/2+6&&b>cueY-cueHeight/2-6)return true;
+   for(let i=0;i<this.textCount;i++){const text=this.texts[i],tx=(text.x-this.cx)/this.scale,ty=(text.y-this.cy)/this.scale;if(l<tx+text.width/this.scale+6&&r>tx-6&&t<ty+text.height/this.scale+6&&b>ty-6)return true;}
+   for(const name of ['reticle','aim','command']){const point=this.points[name];if(point.visible){const px=(point.x-this.cx)/this.scale,py=(point.y-this.cy)/this.scale,radius=name==='reticle'&&this.state.damage>0?36:name==='aim'?31:24;if(l<px+radius&&r>px-radius&&t<py+radius&&b>py-radius)return true;}}
+   return false;
+  };
+  let labelSafe=!clashes(lx,ly);
+  if(!labelSafe){
+   const candidates=[[x,y+30],[x+labelW/2+26,y],[x-labelW/2-26,y],[x,y-60],[x,y+60]];
+   for(const candidate of candidates){const cx=clamp(candidate[0],-halfW+labelW/2+12,halfW-labelW/2-12),cy=clamp(candidate[1],-halfH+labelH/2+12,halfH-labelH/2-12);if(!clashes(cx,cy)){lx=cx;ly=cy;labelSafe=true;break;}}
+  }
+  // The persistent cue already names this destination. If every nearby label
+  // slot is occupied, retain only the exact pin instead of covering combat UI.
+  if(!labelSafe)return;
+  const ex=clamp(x,lx-labelW/2,lx+labelW/2),ey=clamp(y,ly-labelH/2,ly+labelH/2),dx=ex-x,dy=ey-y,len=Math.hypot(dx,dy);
+  if(len>9){this._line(x+dx*9/len,y+dy*9/len,ex,ey,2.6,c.dark,.8);this._line(x+dx*9/len,y+dy*9/len,ex,ey,1,c.amber,.85);}
+  this._rect(lx,ly,labelW,labelH,c.dark,.82,4);this._text(text,lx,ly-6,11,c.amber,'center',labelW-18);
  }
  _aim(){
   const a=this.state.aim,c=HUD_COLORS,strength=clamp(finite(a.strength),0,1);if(strength<=0&&!a.locked)return;
@@ -197,17 +236,17 @@ export class GpuHUD{
  }
  _menu(){
   const s=this.state,c=HUD_COLORS,screen=s.screen;
-  this._shape(this.width/2,this.height/2,this.width,this.height,c.dark,.86);
+  this._shape(this.width/2,this.height/2,this.width,this.height,c.dark,screen==='loading'?1:.86);
   this._rect(0,0,600,610,c.panel,.77,12);this._rect(0,0,600,610,c.edge,.65,12,1);
   this._line(-260,-268,-232,-268,3,c.amber);this._text('JET GAME',-216,-278,18,c.ink,'left',250);this._text(screen==='game'?'EXPEDITION':screen,260,-275,11,c.muted,'right',160);
   if(screen==='help'){this._help();return;}if(screen==='upgrades'){this._upgrades();return;}if(screen==='death'){this._death();return;}
   if(screen==='loading'||screen==='error'){this._loading();return;}
-  this._text(screen==='pause'?'TAKE A BREATH.':'BRING THEM HOME.',0,-185,29,c.ink,'center',510);
-  this._text(screen==='pause'?'THE EXPEDITION IS PAUSED':'FIND SURVIVORS. CLEAR A WAY OUT.',0,-134,13,c.muted,'center',500);
+  this._text(screen==='pause'?'TAKE A BREATH.':s.ready?'EXPEDITION READY':'PREPARING EXPEDITION',0,-185,29,c.ink,'center',510);
+  this._text(screen==='pause'?'THE EXPEDITION IS PAUSED':s.continuing?'YOUR CHECKPOINT HAS BEEN RESTORED':'FIND SURVIVORS. CLEAR A WAY OUT.',0,-134,13,c.muted,'center',500);
   if(screen==='pause'){
    this._text(Math.floor(finite(s.kills))+' CLEARED  /  '+Math.floor(finite(s.rescued))+' RESCUED  /  '+Math.floor(finite(s.relays))+' RELAYS',0,-83,12,c.amber,'center',500);
    this._button('resume','RESUME',0,-24,330,50,{accent:c.cyan});
-  }else this._button('play',s.ready?s.continuing?'CONTINUE EXPEDITION':'ENTER BATTLEFIELD':'PREPARING BATTLEFIELD',0,-24,330,50,{disabled:!s.ready,accent:c.cyan});
+  }else{this._text(s.mission,0,-94,14,c.amber,'center',500);this._text(s.missionDetail,0,-70,11,c.muted,'center',500);this._button('play',s.ready?s.continuing?'CONTINUE EXPEDITION':'ENTER BATTLEFIELD':'PREPARING BATTLEFIELD',0,-24,330,50,{disabled:!s.ready,accent:c.cyan});}
   this._button('help','CONTROLS',-129,47,246,44);this._button('upgrades','UPGRADES',129,47,246,44);
   this._button('save','SAVE EXPEDITION',-129,108,246,44,{disabled:!s.ready||!s.saveAvailable});this._button('mute',s.muted?'SOUND OFF':'SOUND ON',129,108,246,44);
   this._text(s.saveStatus,0,155,11,c.muted,'center',500);
@@ -216,11 +255,17 @@ export class GpuHUD{
  }
  _loading(){
   const s=this.state,c=HUD_COLORS,failed=s.screen==='error';
-  this._text(failed?'SYSTEM INTERRUPTED':'PREPARING EXPEDITION',0,-104,25,failed?c.amber:c.ink,'center',510);
-  this._text(failed?'RELOAD TO RETURN TO THE BATTLEFIELD':s.phase,0,-50,13,c.muted,'center',510);
-  if(failed){this._text(s.error||'GPU CONNECTION UNAVAILABLE',0,-12,12,c.amber,'center',490);this._button('reload','RELOAD',0,70,300,50,{accent:c.amber});}
-  else{this._bar(0,9,360,clamp(finite(s.progress),0,1),c.cyan);this._text(Math.round(clamp(finite(s.progress),0,1)*100)+'%',0,33,14,c.cyan,'center',100);}
-  this._text('JET GAME  /  EXPEDITIONS',0,224,11,c.muted,'center',500);
+  this._text(failed?'SYSTEM INTERRUPTED':s.continuing?'RESUMING EXPEDITION':'PREPARING EXPEDITION',0,-190,25,failed?c.amber:c.ink,'center',510);
+  if(failed){this._text('RELOAD TO RETURN TO THE BATTLEFIELD',0,-125,13,c.muted,'center',510);this._paragraph(s.error||'GPU CONNECTION UNAVAILABLE',0,-78,12,c.amber,490);this._button('reload','RELOAD',0,70,300,50,{accent:c.amber});return;}
+  this._text(s.phase,0,-111,18,c.ink,'center',500);
+  this._paragraph(s.phaseDetail,0,-69,12,c.muted,475,24,3);
+  this._bar(0,42,420,clamp(finite(s.progress),0,1),c.cyan);
+  const total=Math.max(0,Math.floor(finite(s.phaseCount))),index=clamp(Math.floor(finite(s.phaseIndex)),0,total);
+  this._text(total?'STEP '+index+' OF '+total:'STARTING UP',-210,61,11,c.muted,'left',300);this._text(Math.round(clamp(finite(s.progress),0,1)*100)+'%',210,58,16,c.cyan,'right',100);
+  this._line(-230,126,230,126,1,c.edge,.7);
+  this._text(s.continuing?'YOUR SAVED EXPEDITION IS BEING RESTORED':'PREPARING THE WORLD BEFORE YOU ENTER',0,151,11,c.muted,'center',500);
+  this._text('FOLLOW THE GOLD MARKER TO YOUR NEXT OBJECTIVE',0,194,11,c.amber,'center',500);
+  this._text('YOU CAN CONTINUE WHEN EVERYTHING IS READY',0,222,10,c.muted,'center',500);
  }
  _help(){
   const c=HUD_COLORS;this._text('FIELD CONTROLS',0,-225,24,c.ink,'center',500);
