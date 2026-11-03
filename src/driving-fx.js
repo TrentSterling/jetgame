@@ -3,7 +3,7 @@ import {attribute} from 'three/tsl';
 
 export class DrivingEffects{
  constructor(scene,ground){
-  this.ground=ground;this.dummy=new T.Object3D();this.clock=0;this.emitAt=0;this.cursor=0;this.markCount=0;this.dustCursor=0;this.bloodUntil=0;this.bloodBody=null;this.lastVehicle=null;this.fx=null;
+  this.ground=ground;this.dummy=new T.Object3D();this.clock=0;this.emitAt=0;this.cursor=0;this.markCount=0;this.dustCursor=0;this.bloodUntil=0;this.bloodBody=null;this.lastVehicle=null;this.fx=null;this.roostAt=0;this.roostBursts=0;this.roostP=new T.Vector3();this.roostV=new T.Vector3();
   this.marks=new T.InstancedMesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({color:'#ffffff',transparent:true,opacity:.58,depthWrite:false}),1536);
   this.marks.frustumCulled=false;this.bloodColor=new T.Color('#67151c');this.dirtColor=new T.Color('#302d29');
   this.marks.instanceMatrix.setUsage(T.DynamicDrawUsage);scene.add(this.marks);
@@ -12,7 +12,7 @@ export class DrivingEffects{
   this.dust=new T.InstancedMesh(geo,mat,160);this.dust.frustumCulled=false;this.dust.instanceMatrix.setUsage(T.DynamicDrawUsage);scene.add(this.dust);
   this.puffs=Array.from({length:160},()=>({life:0,pos:new T.Vector3(),vx:0,vz:0,size:0}));this.previous=[null,null];this.clear();
  }
- clear(){this.cursor=this.markCount=this.dustCursor=this.clock=this.emitAt=0;this.previous=[null,null];this.bloodUntil=0;this.bloodBody=null;this.dummy.scale.setScalar(0);this.dummy.updateMatrix();
+ clear(){this.cursor=this.markCount=this.dustCursor=this.clock=this.emitAt=0;this.previous=[null,null];this.bloodUntil=0;this.bloodBody=null;this.roostAt=this.roostBursts=0;this.lastVehicle=null;this.dummy.scale.setScalar(0);this.dummy.updateMatrix();
   for(let i=0;i<1536;i++){this.marks.setMatrixAt(i,this.dummy.matrix);this.marks.setColorAt(i,this.dirtColor);}
   for(let i=0;i<160;i++){this.dust.setMatrixAt(i,this.dummy.matrix);this.puffs[i].life=0;this.alpha.array[i]=0;}
   this.marks.instanceMatrix.needsUpdate=this.dust.instanceMatrix.needsUpdate=this.alpha.needsUpdate=true;
@@ -34,9 +34,18 @@ export class DrivingEffects{
   v.set(-vx/n,1,-vz/n);this.fx.cloud(p,.3,1,.65,'#ab9470',.24,v);
  }
  emit(car,dt,handbrake){
-  const vehicle=car.fleetId||car;if(this.lastVehicle!==vehicle){this.previous=[null,null];this.lastVehicle=vehicle;}
+  const vehicle=car.fleetId||car;if(this.lastVehicle!==vehicle){this.previous=[null,null];this.lastVehicle=vehicle;this.roostAt=this.clock;}
   const speed=Math.abs(car.speed),sliding=Math.abs(car.slip)>.13||handbrake,bloody=(car.fleetId||car)===this.bloodBody&&this.clock<this.bloodUntil,marking=sliding||bloody;
   if(!car.grounded||speed<7){this.previous=[null,null];return;}
+  if(this.fx&&speed>12&&(sliding||bloody)&&this.clock>=this.roostAt){
+   this.roostAt=this.clock+.065;this.roostBursts++;const c=Math.cos(car.yaw),s=Math.sin(car.yaw),strength=Math.min(1,Math.abs(car.slip)*2+(handbrake?.25:0)),flow=bloody?Math.max(0,(this.bloodUntil-this.clock)/5):0;
+   for(const side of [-1,1])for(let j=0;j<2;j++){
+    this.roostP.set(car.pos.x+c*side*1.15+s*1.35,0,car.pos.z-s*side*1.15+c*1.35);this.roostP.y=this.ground(this.roostP.x,this.roostP.z)+.18;
+    const outward=1.5+strength*3+this.fx.random()*2;
+    this.roostV.set((car.vx||0)*.18+c*side*outward+s*(3+speed*.06),1.5+this.fx.random()*2.8,-s*side*outward+(car.vz||0)*.18+c*(3+speed*.06));
+    this.fx.fragment(this.roostP,this.roostV,.035+this.fx.random()*.06,.35+this.fx.random()*.35,flow>.05&&j===0?'#75232a':'#ad9167');
+   }
+  }
   if(this.clock<this.emitAt)return;this.emitAt=this.clock+.035;
   const c=Math.cos(car.yaw),s=Math.sin(car.yaw);
   for(let i=0;i<2;i++){

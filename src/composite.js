@@ -29,7 +29,7 @@ export function compositeRigid(root,exclude=new Set()){
 }
 // Render composites must not change the original pieces emitted by a wreck.
 export function visitOriginalParts(root,visit){
- if(root.userData.rigidComposite||(!root.visible&&!root.userData.rigidSource))return;
+ if(root.userData.panelDetached||root.userData.rigidComposite||(!root.visible&&!root.userData.rigidSource))return;
  if(root.isMesh)visit(root);for(const child of root.children)visitOriginalParts(child,visit);
 }
 // Bake stationary site components into one GPU mesh per material/shadow state.
