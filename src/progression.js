@@ -1,3 +1,4 @@
+import {defaultVehicleKit,defaultChaosProgress} from './chaos-state.js';
 export const CLUSTER_UNLOCK=Object.freeze({cost:600,name:'CLUSTER WARHEADS'});
 const own=(value,key)=>Object.prototype.hasOwnProperty.call(value,key);
 export const defaultEquipment=()=>({version:1,cluster:false,missiles:'standard'});
@@ -11,7 +12,7 @@ export function restoreEquipment(value){
 
 export class Progression {
   constructor() { this.reset(); }
-  reset() { this.earned=0;this.spent=0;this.rewards=0;this.levels={foot:0,car:0,jet:0};this.equipment=defaultEquipment(); }
+  reset() { this.earned=0;this.spent=0;this.rewards=0;this.levels={foot:0,car:0,jet:0};this.equipment=defaultEquipment();this.vehicleKit=defaultVehicleKit();this.chaosProgress=defaultChaosProgress();this.mineAmmo=3;this.mineReload=0; }
   sync(earned) { if(Number.isFinite(earned))this.earned=Math.max(this.earned,earned,0); }
   get scrap() { return this.earned+this.rewards-this.spent; }
   cost(mode) { return !own(this.levels,mode)||this.levels[mode]>=3?Infinity:80+120*this.levels[mode]; }
@@ -39,3 +40,4 @@ export class Progression {
   get blastRadius() { return 13+this.levels.jet*2; }
   get rearmSeconds() { return 7/(1+this.levels.jet*.25); }
 }
+

@@ -11,7 +11,7 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),finite=(n,f=0)=>Number.isFinite(n
 const distanceLabel=n=>n>=1000?(n/1000).toFixed(1)+' KM':Math.round(Math.max(0,n))+' M';
 const linear=hex=>{const color=new T.Color(hex);return Object.freeze([color.r,color.g,color.b]);};
 export const HUD_COLORS=Object.freeze({ink:linear('#f7f1dc'),muted:linear('#a8babd'),amber:linear('#ffc46b'),cyan:linear('#7fe3db'),red:linear('#ff7966'),dark:linear('#071419'),panel:linear('#10242b'),edge:linear('#38545a')});
-const fields={screen:'game',mode:'foot',modeLabel:'',health:100,shielded:false,ammo:32,ammoMax:32,ammoSuffix:'/ ∞',weapon:'CARBINE',speed:0,altitude:0,missiles:0,bombs:0,missileWarhead:'standard',boost:1,boosting:false,boostLocked:false,reload:0,mission:'FIND SURVIVORS',missionDetail:'',action:'',actionKey:'',seatAction:'',interactionProgress:0,message:'',hit:0,damage:0,kills:0,rescued:0,relays:0,scrap:0,respawnMode:'foot',respawnSeconds:0,ready:false,deployAvailable:false,keyboardOnly:false,progress:0,phase:'BUILDING BATTLEFIELD',phaseDetail:'Preparing the world, vehicles and survivors before you enter.',phaseIndex:0,phaseCount:0,sceneFade:0,error:'',saveStatus:'LOCAL EXPEDITION CHECKPOINTS',saveAvailable:true,continuing:false,muted:false,version:'0.9.0'};
+const fields={screen:'game',mode:'foot',modeLabel:'',health:100,shielded:false,ammo:32,ammoMax:32,ammoSuffix:'/ ∞',weapon:'CARBINE',speed:0,altitude:0,missiles:0,bombs:0,missileWarhead:'standard',boost:1,boosting:false,boostLocked:false,reload:0,mission:'FIND SURVIVORS',missionDetail:'',action:'',actionKey:'',seatAction:'',interactionProgress:0,message:'',hit:0,damage:0,kills:0,rescued:0,relays:0,scrap:0,respawnMode:'foot',respawnSeconds:0,ready:false,deployAvailable:false,keyboardOnly:false,progress:0,phase:'BUILDING BATTLEFIELD',phaseDetail:'Preparing the world, vehicles and survivors before you enter.',phaseIndex:0,phaseCount:0,sceneFade:0,error:'',saveStatus:'LOCAL EXPEDITION CHECKPOINTS',saveAvailable:true,continuing:false,muted:false,version:'0.9.0',kitPage:false,boostReward:'',mines:-1};
 const reticleFields={x:0,y:0};
 const waypointFields={x:0,y:0,label:'SURVIVORS',distance:0,behind:false,inView:null,bearing:0,direction:'',turnDegrees:0};
 const aimFields={x:0,y:0,strength:0,locked:false};
@@ -31,7 +31,7 @@ const shapeDistance=wgslFn(`fn hudShapeDistance(p:vec2f,size:vec2f,corner:f32,bo
 /**
  * CSS-pixel viewport. update(state) accepts optional primitive fields in
  * `fields` above, plus waypoint/aim screen NDC (+Y up), jet command offsets
-  * (-1..1,+Y up), and at most four upgrades. Reuse/mutate state safely.
+  * (-1..1,+Y up), and at most five upgrades. Reuse/mutate state safely.
  * hitTest returns an action string or null; it never triggers game actions.
  * The caller renders the world first, then render(renderer) on that canvas.
  */
@@ -55,7 +55,7 @@ export class GpuHUD{
   this.material.positionNode=vec3(rect.x.add(local.x.mul(rotation.x).sub(local.y.mul(rotation.y))),rect.y.add(local.x.mul(rotation.y).add(local.y.mul(rotation.x))),0);
   this.material.colorNode=ink.rgb;this.material.opacityNode=smoothstep(aa.negate(),aa,distance).oneMinus().mul(ink.a);
   this.mesh=new T.Mesh(this.geometry,this.material);this.mesh.name='GPU glyphs and HUD shapes';this.mesh.frustumCulled=false;this.mesh.renderOrder=10000;this.scene.add(this.mesh);
-  this.state={...fields,reticle:{...reticleFields},waypoint:{...waypointFields},aim:{...aimFields},jet:{...jetFields},upgrades:Array.from({length:4},()=>({...upgradeFields})),reticleVisible:false,waypointVisible:false,aimVisible:false,jetVisible:false,upgradeCount:0};
+  this.state={...fields,reticle:{...reticleFields},waypoint:{...waypointFields},aim:{...aimFields},jet:{...jetFields},upgrades:Array.from({length:5},()=>({...upgradeFields})),reticleVisible:false,waypointVisible:false,aimVisible:false,jetVisible:false,upgradeCount:0};
   this.regions=Array.from({length:GPU_HUD_MAX_HITS},()=>({x:0,y:0,w:0,h:0,action:'',disabled:false}));
   this.texts=Array.from({length:64},()=>({text:'',x:0,y:0,width:0,height:0}));
   this.points={reticle:{x:0,y:0,visible:false},aim:{x:0,y:0,visible:false},command:{x:0,y:0,visible:false},nose:{x:0,y:0,visible:false},waypoint:{x:0,y:0,visible:false},objectiveCue:{x:0,y:0,visible:false}};
@@ -76,7 +76,7 @@ export class GpuHUD{
    const source=input[name],visible=source!=null&&source!==false,key=name+'Visible';if(state[key]!==visible){state[key]=visible;changed=true;}
    for(const field of keys){const value=source?.[field]??defaults[field];if(!Object.is(state[name][field],value)){state[name][field]=value;changed=true;}}
   }
-  const upgrades=input.upgrades,count=Math.min(4,upgrades?.length||0);if(count!==state.upgradeCount){state.upgradeCount=count;changed=true;}
+  const upgrades=input.upgrades,count=Math.min(5,upgrades?.length||0);if(count!==state.upgradeCount){state.upgradeCount=count;changed=true;}
   for(let i=0;i<count;i++)for(const key of upgradeKeys){const value=upgrades[i][key]??upgradeFields[key];if(!Object.is(state.upgrades[i][key],value)){state.upgrades[i][key]=value;changed=true;}}
   if(changed)this.dirty=true;if(this.dirty)this._build();return changed;
  }
@@ -164,8 +164,8 @@ export class GpuHUD{
   this._text(reloading?'--':isFoot?Math.max(0,Math.floor(finite(s.ammo))):Math.round(Math.abs(finite(s.speed))),108,58,26,c.ink,'center',100);
   if(reloading)this._bar(108,94,80,s.reload,c.cyan);else if(isFoot)this._text(s.ammoSuffix||'/ '+s.ammoMax,108,93,10,c.muted,'center',85);else this._text('KM/H',108,93,10,c.muted,'center',85);
   const resource=clamp(finite(s.boost,1),0,1),resourceColor=s.boostLocked?c.amber:s.boosting?c.cyan:c.muted;
-  this._bar(0,79,64,resource,resourceColor);this._text(isFoot?'STAMINA':s.boostLocked?'RELEASE SHIFT':s.boosting?'BOOST':'SHIFT',0,93,9,resourceColor,'center',105);
-  if(!isFoot)this._text('RMB '+finite(s.missiles)+(s.missileWarhead==='cluster'?' CLUSTER':' MISSILES')+(isJet?' / SPACE '+finite(s.bombs):''),0,115,11,c.muted,'center',290);
+  this._bar(0,79,64,resource,resourceColor);this._text(isFoot?'STAMINA':s.boostLocked?'RELEASE SHIFT':s.boostReward||(s.boosting?'BOOST':'SHIFT'),0,93,9,resourceColor,'center',105);
+  if(!isFoot)this._text('RMB '+finite(s.missiles)+(s.missileWarhead==='cluster'?' CLUSTER':' MISSILES')+(isJet?' / SPACE '+finite(s.bombs):s.mines>=0?' / G '+s.mines+' MINES':''),0,115,11,c.muted,'center',290);
   if(isJet)this._text(Math.round(finite(s.altitude))+' M',0,57,10,c.muted,'center',90);
   const edge=s.waypointVisible?this._waypointEdge():null,actionRows=[];
   if(s.aimVisible)this._aim();if(isJet&&s.jetVisible)this._jet();
@@ -316,19 +316,21 @@ export class GpuHUD{
  }
  _help(){
   const c=HUD_COLORS;this._text('FIELD CONTROLS',0,-225,24,c.ink,'center',500);
-  const rows=[['WASD','MOVE / DRIVE / THROTTLE'],['MOUSE','AIM / STEER JET'],['LMB','FIRE'],['RMB','SHOVE / VEHICLE MISSILES'],['SHIFT','SPRINT / BOOST / CHUTE DIVE'],['SPACE','JUMP / HANDBRAKE / BOMB'],['C / CTRL','CROUCH / SLIDE'],['JET: C','CENTER FLIGHT COMMAND'],['E','ENTER / EXIT / EJECT'],['Q','SWAP SEATS WITH ALLIED DRIVER'],['F HOLD','REPAIR SURVIVOR RADIO'],['R','RELOAD / DEPLOY'],['Z / X / V','RIFLE / TORQUE / BOMB UPGRADE'],['B','UNLOCK / EQUIP CLUSTER MISSILES']];
-  for(let i=0;i<rows.length;i++){const y=-172+i*23;this._text(rows[i][0],-249,y,11,c.cyan,'left',125);this._text(rows[i][1],-106,y,12,c.ink,'left',360);}
+  const rows=[['WASD','MOVE / DRIVE / THROTTLE'],['MOUSE','AIM / STEER JET'],['LMB','FIRE'],['RMB','SHOVE / VEHICLE MISSILES'],['SHIFT','SPRINT / BOOST / CHUTE DIVE'],['SPACE','JUMP / HANDBRAKE / BOMB'],['C / CTRL','CROUCH / SLIDE'],['JET: C','CENTER FLIGHT COMMAND'],['E','ENTER / EXIT / EJECT'],['Q','SWAP SEATS WITH ALLIED DRIVER'],['F HOLD','REPAIR RADIO / SALVAGE SUPPLIES'],['R','RELOAD / DEPLOY'],['Z / X / V','RIFLE / TORQUE / BOMB UPGRADE'],['B','UNLOCK / EQUIP CLUSTER MISSILES'],['U / 1-5','WORKSHOP / BUY OR TOGGLE KIT'],['G / N','DROP MINE / CHANGE DESTINATION']];
+  for(let i=0;i<rows.length;i++){const y=-176+i*20;this._text(rows[i][0],-249,y,11,c.cyan,'left',125);this._text(rows[i][1],-106,y,12,c.ink,'left',360);}
   this._text('IN AIR: SPACE OPENS OR CUTS THE PARACHUTE',0,168,11,c.muted,'center',500);this._text('AFTER DEFEAT: 1 / 2 / 3 CHOOSES YOUR INSERTION',0,192,10,c.muted,'center',510);
   this._button('back','BACK',0,251,220,42);
  }
  _upgrades(){
-  const s=this.state,c=HUD_COLORS;this._text('BUILD YOUR EDGE',0,-224,25,c.ink,'center',500);this._text(Math.floor(finite(s.scrap))+' SCRAP',0,-180,14,c.amber,'center',400);
-  if(!s.upgradeCount){this._text('SALVAGE THE HORDE TO EARN UPGRADES',0,-30,15,c.muted,'center',500);}
+  const s=this.state,c=HUD_COLORS;this._text(s.kitPage?'VEHICLE WORKSHOP':'BUILD YOUR EDGE',0,-224,25,c.ink,'center',500);
+  this._text(Math.floor(finite(s.scrap))+' SCRAP',-245,-180,14,c.amber,'left',220);
+  this._button('upgrade-page',s.kitPage?'WEAPONS':'VEHICLE KIT',155,-184,210,32);
+  if(!s.upgradeCount)this._text('SALVAGE THE HORDE TO EARN UPGRADES',0,-30,15,c.muted,'center',500);
   for(let i=0;i<s.upgradeCount;i++){
-   const u=s.upgrades[i],y=-126+i*88,equipment=u.id==='cluster',max=!equipment&&finite(u.level)>=3;
-   const status=equipment?(u.level?(u.equipped?'CLUSTER EQUIPPED':'STANDARD EQUIPPED'):'KILLS + RESCUES EARN SCRAP'):'LEVEL '+Math.min(3,Math.max(0,finite(u.level)))+' / 3';
-   this._rect(0,y+15,522,80,c.dark,.6,5);this._text(u.name,-242,y-14,15,c.ink,'left',310);this._text(status,-242,y+8,10,equipment&&u.equipped?c.cyan:c.amber,'left',265);this._text(u.detail,-242,y+28,10,c.muted,'left',315);
-   this._button('upgrade:'+u.id,max?'MAX':equipment&&u.level?'B SWAP':u.key+'  '+u.cost,183,y+10,120,44,{disabled:max||!u.available,accent:equipment?c.cyan:c.amber});
+   const u=s.upgrades[i],vehicle=u.id.startsWith('kit:'),equipment=u.id==='cluster'||vehicle,y=s.kitPage?-139+i*73:-126+i*88,max=!equipment&&finite(u.level)>=3;
+   const status=vehicle?(u.level?(u.equipped?'ENABLED':'DISABLED'):'PERMANENT FLEET EQUIPMENT'):equipment?(u.level?(u.equipped?'CLUSTER EQUIPPED':'STANDARD EQUIPPED'):'KILLS + RESCUES EARN SCRAP'):'LEVEL '+Math.min(3,Math.max(0,finite(u.level)))+' / 3';
+   this._rect(0,y+15,522,s.kitPage?68:80,c.dark,.6,5);this._text(u.name,-242,y-12,14,c.ink,'left',310);this._text(status,-242,y+7,9,u.equipped?c.cyan:c.amber,'left',265);this._text(u.detail,-242,y+24,9,c.muted,'left',315);
+   this._button('upgrade:'+u.id,max?'MAX':vehicle&&u.level?u.key+' '+(u.equipped?'OFF':'ON'):equipment&&u.level?'B SWAP':u.key+'  '+u.cost,183,y+10,120,40,{disabled:max||!u.available,accent:equipment?c.cyan:c.amber});
   }
   this._button('back','BACK',0,251,220,42);
  }
@@ -340,3 +342,4 @@ export class GpuHUD{
   this._text(Math.floor(finite(s.rescued))+' RESCUED  /  '+Math.floor(finite(s.relays))+' RELAYS',0,190,12,c.amber,'center',500);
  }
 }
+

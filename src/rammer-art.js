@@ -19,8 +19,9 @@ function arch(){
  const v=[],f=[],steps=12;
  for(let i=0;i<=steps;i++){
   // Short cycle wings clear the frame at full droop and do not sweep into the
-  // cabin posts. Wheel/pivot transforms and the tire envelope stay unchanged.
-  const a=.90+(Math.PI-1.80)*i/steps;
+  // cabin posts. The .96 rad ends clear the rails even at airborne full
+  // droop and maximum steering; wheel/pivot transforms and tires stay unchanged.
+  const a=.96+(Math.PI-1.92)*i/steps;
   for(const [x,r] of [[-.29,.725],[.29,.725],[.29,.785],[-.29,.785]])v.push([x,Math.sin(a)*r,Math.cos(a)*r]);
  }
  for(let j=0;j<steps;j++)for(let k=0;k<4;k++){const a=j*4+k,b=j*4+(k+1)%4,c=b+4,d=a+4;f.push([a,b,c],[a,c,d]);}
@@ -158,3 +159,4 @@ export function buildRammerCoachwork(root,material,Part){
  }
  u.rammerHero={design:'RAM / 01',revision:'A',parts,seatEye:[.45,1.93,.30],driverHip:[-.45,1.08,.30],wheelRadius:.66,contract:'Art only. Released body, steering, wheel and suspension transforms remain authoritative.'};
 }
+

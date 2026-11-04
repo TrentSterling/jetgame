@@ -8,6 +8,9 @@ import {validAircraftSystems} from './aircraft-systems.js';
 import {CROWD_COUNTER_COUNT,migrateCrowdCheckpoint} from './crowd-save-migration.js';
 import {validEquipment,restoreEquipment} from './progression.js';
 import {validVehicleDamage} from './vehicle-impact.js';
+import {validVehicleKit,restoreVehicleKit,validChaosProgress,restoreChaosProgress} from './chaos-state.js';
+import {height,legacyHeight} from './terrain.js';
+import {DUNE_FEATURES} from './dune-playgrounds.js';
 export const SAVE_SCHEMA=1,WORLD_VERSION='expeditions-1';
 const bodyData=body=>Object.fromEntries(Object.entries(body).filter(([k,v])=>k==='pos'||['number','boolean','string'].includes(typeof v)).map(([k,v])=>[k,k==='pos'?v.toArray():v]));
 const setBody=(body,data)=>{for(const [k,v] of Object.entries(data))if(k==='pos')body.pos.fromArray(v);else body[k]=v;};
@@ -25,6 +28,11 @@ export function validateCheckpoint(s,count){
  if(s.runtime.hurtUntil!==undefined&&!finite(s.runtime.hurtUntil))bad('injury interruption');
  if(!s.upgrades||!modes.every(k=>Number.isInteger(s.upgrades.levels?.[k])&&s.upgrades.levels[k]>=0&&s.upgrades.levels[k]<=3)||!['earned','spent','rewards'].every(k=>finite(s.upgrades[k])&&s.upgrades[k]>=0))bad('upgrades');
  if(!validEquipment(s.upgrades.equipment))bad('missile equipment');
+ if(!validVehicleKit(s.upgrades.vehicleKit)||!validChaosProgress(s.upgrades.chaosProgress))bad('vehicle kit or encounter state');
+ if(s.upgrades.mineAmmo!==undefined&&(!Number.isInteger(s.upgrades.mineAmmo)||s.upgrades.mineAmmo<0||s.upgrades.mineAmmo>3))bad('mine ammunition');
+ if(s.upgrades.mineReload!==undefined&&(!finite(s.upgrades.mineReload)||s.upgrades.mineReload<0||s.upgrades.mineReload>=8))bad('mine recharge');
+ if(s.runtime.terrainRevision!==undefined&&s.runtime.terrainRevision!==2)bad('terrain revision');
+ if(s.runtime.chaosTracker!==undefined&&(!Number.isInteger(s.runtime.chaosTracker)||s.runtime.chaosTracker< -1||s.runtime.chaosTracker>2))bad('encounter tracker');
  if(!s.fleet||!Array.isArray(s.fleet.bodies)||s.fleet.bodies.length>100000||!s.fleet.bodies.every(b=>bodyValid(b)&&typeof b.fleetId==='string'&&['buggy','scout','carrier','jet'].includes(b.kind)))bad('vehicles');
  const ids=new Set(s.fleet.bodies.map(b=>b.fleetId));
  if(!s.fleet.bodies.every(validVehicleDamage))bad('vehicle deformation');
@@ -35,6 +43,7 @@ export function validateCheckpoint(s,count){
  if(!e||!['done','repaired','visited'].every(k=>Array.isArray(e[k])&&e[k].every(v=>typeof v==='string'))||!Array.isArray(e.refuges)||!e.refuges.length||!e.refuges.every(r=>typeof r.id==='string'&&finite(r.x)&&finite(r.z))||!['rescued','deliveries','progress'].every(k=>finite(e[k])&&e[k]>=0))bad('expeditions');
  const partySite=e.party&&checkpointRegion(e.party.id);
  if(e.party&&(!ids.has(e.party.vehicle)||!partySite||partySite.kind==='home'||!validExpeditionPeople(partySite,e.party.count)||!finite(e.party.reward)||!finite(e.party.x)||!finite(e.party.z)))bad('passengers');
+ if(e.party?.crewRepair!==undefined&&(!finite(e.party.crewRepair)||e.party.crewRepair<0||e.party.crewRepair>20))bad('crew repair allowance');
  // Optional additive data keeps all v0.8 checkpoints readable. Mission bodies
  // are validated before any runtime/GPU state is changed by restore().
  if(e.missions!==undefined){
@@ -60,6 +69,27 @@ export function validateCheckpoint(s,count){
  }
  const counters=s.gpu?.counters;if(!(counters instanceof ArrayBuffer)||![LEGACY_COUNTER_COUNT*4,BOT_COUNTER_COUNT*4,CROWD_COUNTER_COUNT*4].includes(counters.byteLength))bad('counters buffer');
  return s;
+}
+
+// One-time terrain migration preserves horizontal progress and airborne altitude.
+// Only local feature windows change; old floor-relative poses and crowd buffers
+// move by the exact new-minus-old ground delta, not a teleport to the airfield.
+export function migratePlaygroundTerrain(input){
+ if(input.runtime.terrainRevision===2)return input;
+ const s=structuredClone(input),changed=(x,z)=>DUNE_FEATURES.some(f=>Math.abs(x-f.x)<f.rx&&Math.abs(z-f.z)<f.rz);
+ for(const b of [s.player,...s.fleet.bodies]){
+  const [x,y,z]=b.pos;if(!changed(x,z))continue;
+  const old=legacyHeight(x,z),floor=height(x,z),delta=floor-old;
+  const attached=b.kind==='jet'?b.taxiing||Math.abs(y-old)<2.5:b.grounded!==false;
+  b.pos[1]=attached?y+delta:Math.max(y,floor+(b.kind==='jet'?2:.1));
+  if(Number.isFinite(b._contactY))b._contactY+=delta;
+ }
+ const pos=new Float32Array(s.gpu.pos),blood=new Float32Array(s.gpu.blood);
+ for(let i=0;i<s.count;i++){
+  const k=i*4,x=pos[k],z=pos[k+2];if(changed(x,z))pos[k+1]+=height(x,z)-legacyHeight(x,z);
+  for(const j of [i*12,i*12+4])if(changed(blood[j],blood[j+2]))blood[j+1]+=height(blood[j],blood[j+2])-legacyHeight(blood[j],blood[j+2]);
+ }
+ s.runtime.terrainRevision=2;return s;
 }
 
 export class GameSave{
@@ -95,10 +125,10 @@ export class GameSave{
  }
  restore(s){
   const {horde,fleet,expeditions:e,player,upgrades,combat,course,writeRuntime}=this.game;validateCheckpoint(s,horde.count);
-  const migration=migrateLegacySpawn(migrateBotCheckpoint(s));s=validateCheckpoint(migrateCrowdCheckpoint(migration.snapshot),horde.count);
+  const migration=migrateLegacySpawn(migrateBotCheckpoint(s));s=validateCheckpoint(migratePlaygroundTerrain(migrateCrowdCheckpoint(migration.snapshot)),horde.count);
   if(horde.counters.value.array.length!==CROWD_COUNTER_COUNT)bad('runtime counters');
   this.spawnMigration=migration.moved;
-  fleet.restore(s.fleet);setBody(player,s.player);Object.assign(upgrades,structuredClone(s.upgrades),{equipment:restoreEquipment(s.upgrades.equipment)});Object.assign(combat,structuredClone(s.combat),{rearmDebt:structuredClone(s.combat.rearmDebt??{car:0,jet:0})});
+  fleet.restore(s.fleet);setBody(player,s.player);Object.assign(upgrades,structuredClone(s.upgrades),{equipment:restoreEquipment(s.upgrades.equipment),vehicleKit:restoreVehicleKit(s.upgrades.vehicleKit),chaosProgress:restoreChaosProgress(s.upgrades.chaosProgress),mineAmmo:s.upgrades.mineAmmo??3,mineReload:s.upgrades.mineReload??0});Object.assign(combat,structuredClone(s.combat),{rearmDebt:structuredClone(s.combat.rearmDebt??{car:0,jet:0})});
   for(const k of ['done','repaired','visited'])e[k]=new Set(s.expeditions[k]);
   for(const k of ['refuges','party','rescued','deliveries','progress','active'])e[k]=structuredClone(s.expeditions[k]);
   for(const site of e.sites.values())site.ready=e.repaired.has(site.id);
@@ -138,3 +168,4 @@ export class GameSave{
  tick(){if(this.started&&performance.now()-this.lastAttempt>=10000)void this.save();}
  report(){return {enabled:this.enabled,loaded:this.loaded,savedAt:this.savedAt,revision:this.revision,saving:!!this.pending,blocked:this.blocked,error:this.lastError};}
 }
+

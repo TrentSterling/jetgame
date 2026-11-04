@@ -28,7 +28,7 @@ const outsideView=wgslFn(`fn outsideCrowdView(p:vec3f,view:mat4x4f)->bool{
 
 export function createKernels(h) {
   const {pos, old, vel, state, blood, density, flow, counters, dt, time,
-    pressureScan,pressureOrigin,pressureRecruit,defenseOrigins, defenseRays, defenseIds, botOrigins, botRays, botIds, botCars, botCarsOld, viewProjection, viewEnabled, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
+    pressureScan,pressureOrigin,pressureRecruit,defenseOrigins, defenseRays, defenseIds, botOrigins, botRays, botIds, botCars, botCarsOld, supportOrigins, supportRays, carStyle, viewProjection, viewEnabled, fieldOrigin, streaming, goal, shot, rays, melee, meleeAim, blastType, blast, car, carOld, tool, jet, jetOld} = h;
 
   const cellIndex=p=>cell(p.sub(fieldOrigin));
   const inside=p=>abs(p.x.sub(fieldOrigin.x)).lessThan(188).and(abs(p.y.sub(fieldOrigin.y)).lessThan(188));
@@ -221,6 +221,17 @@ export function createKernels(h) {
       s.z.assign(time.add(.15));
     });
 
+    // Eight bounded support rays share the crowd's authoritative damage path.
+    // Environment clipping and tracer direction are supplied by the CPU lane.
+    for(let i=0;i<8;i++){
+      const origin=supportOrigins.element(i),aim=supportRays.element(i);
+      If(origin.w.greaterThan(0),()=>{
+       const along=dot(center.sub(origin.xyz),aim.xyz),nearest=origin.xyz.add(aim.xyz.mul(clamp(along,0,aim.w)));
+       If(along.greaterThan(0).and(along.lessThan(aim.w)).and(length(center.sub(nearest).mul(vec3(1,.48,1))).lessThan(bodyScale.mul(.48))),()=>{
+        damage.addAssign(origin.w);impulse.addAssign(aim.xyz.mul(11).add(vec3(0,3,0)));v.w.assign(max(v.w,.18));cause.assign(uint(1));s.z.assign(time.add(.1));atomicAdd(counters.element(1),uint(1));
+       });
+      });
+    }
     // Allied shots are target-specific and cannot affect friendly CPU actors.
     for(let i=0;i<2;i++){
       const origin=botOrigins.element(i),aim=botRays.element(i),targetId=i===0?botIds.x:botIds.y;
@@ -252,6 +263,11 @@ export function createKernels(h) {
       If(body.w.greaterThan(3).and(distance.lessThan(2+skim*2.2)).and(abs(center.y.sub(point.y)).lessThan(3)),()=>{
         damage.addAssign(max(35,body.w.mul(8+skim*6)));
         impulse.addAssign(normalize(travel.add(vec3(.001,0,0))).mul(body.w).mul(.70).add(normalize(vec3(center.x.sub(point.x),.2,center.z.sub(point.z)).add(.001)).mul(min(body.w.mul(.17),9))).add(vec3(0,float(5+skim*5).add(min(body.w.mul(.10),6)),0)));
+        if(skim===0){
+         const outward=normalize(vec3(center.x.sub(point.x),.06,center.z.sub(point.z)).add(.001));
+         impulse.addAssign(outward.mul(min(body.w.mul(.25),13)).mul(carStyle.z));
+         impulse.y.addAssign(carStyle.w.mul(8));
+        }
         cause.assign(uint(killCause));atomicAdd(counters.element(contactCounter),uint(1));s.z.assign(time.add(.1));
       });
     }
@@ -340,3 +356,4 @@ export function createKernels(h) {
   sim.name = 'HordeSimulate';
   return {clear, snapshot, sim};
 }
+

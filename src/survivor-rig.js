@@ -242,13 +242,13 @@ export function poseSurvivorRig(root,{walking=0,dt=0,time,aimPitch=0,firing=fals
   }
  }
  if(rig.weapon){
-  const w=rig.weapon;w.group.position.set(0,1.285+speed*Math.abs(Math.cos(phase))*.012,-.02+state.recoil);w.group.rotation.set(aim,0,0);w.group.visible=!seated;w.flash.visible=!!firing&&!seated;
-  if(!seated){
+  const w=rig.weapon;w.group.position.set(0,(seated?.345:1.285)+speed*Math.abs(Math.cos(phase))*.012,-.02+state.recoil);w.group.rotation.set(aim,0,0);w.group.visible=!seated||seat==='gunner';w.flash.visible=!!firing&&(!seated||seat==='gunner');
+  if(!seated||seat==='gunner'){
    // Weapon is an independent aim anchor so the actual muzzle direction stays
    // exact; both wrists solve toward its two grips, including pitch/recoil.
    const c=Math.cos(aim),s=Math.sin(aim),y=w.group.position.y,z=w.group.position.z;
-   solveArm(root,'right',.095,y-.07*c+.28*s,z-.07*s-.28*c,false);
-   solveArm(root,'left',-.005,y-.035*c+.61*s,z-.035*s-.61*c,false);
+   solveArm(root,'right',.095,y-.07*c+.28*s,z-.07*s-.28*c,seated);
+   solveArm(root,'left',-.005,y-.035*c+.61*s,z-.035*s-.61*c,seated);
   }
  }
  root.updateMatrixWorld(true);rig.skeleton.update();return root;
@@ -258,3 +258,4 @@ export function disposeSurvivorRig(root){
  const geometries=new Set(),materials=new Set();root.traverse(o=>{if(o.isMesh){geometries.add(o.geometry);for(const m of Array.isArray(o.material)?o.material:[o.material])materials.add(m);}});
  for(const g of geometries)g.dispose();for(const m of materials)m.dispose();rig.skeleton.dispose();
 }
+

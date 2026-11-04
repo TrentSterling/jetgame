@@ -51,6 +51,7 @@ export class Horde{
   this.defenseOrigins=uniformArray(Array.from({length:2},()=>new T.Vector4()));this.defenseRays=uniformArray(Array.from({length:2},()=>new T.Vector4()));this.defenseIds=uniform(new T.Vector2(-1,-1));
   // Fixed uniforms add allied combat without another storage-buffer binding.
   this.botOrigins=uniformArray(Array.from({length:2},()=>new T.Vector4()));this.botRays=uniformArray(Array.from({length:2},()=>new T.Vector4()));this.botIds=uniform(new T.Vector2(-1,-1));
+  this.supportOrigins=uniformArray(Array.from({length:8},()=>new T.Vector4()));this.supportRays=uniformArray(Array.from({length:8},()=>new T.Vector4()));this.carStyle=uniform(new T.Vector4());
   this.botCars=uniformArray(Array.from({length:3},()=>new T.Vector4()));this.botCarsOld=uniformArray(Array.from({length:3},()=>new T.Vector4()));
   this.viewProjection=uniform(new T.Matrix4());this.viewEnabled=uniform(0);
   this.blood=instancedArray(count*3,'vec4');
@@ -66,7 +67,7 @@ export class Horde{
   this.reset();
   this.gore=addGore(this,scene);
  }
- clearBotInputs(){this.botIds.value.set(-1,-1);for(const list of [this.botOrigins,this.botRays,this.botCars,this.botCarsOld])for(const v of list.array)v.set(0,0,0,0);}
+ clearBotInputs(){for(const list of [this.supportOrigins?.array,this.supportRays?.array])for(const v of list||[])v.set(0,0,0,0);this.carStyle?.value.set(0,0,0,0);this.botIds.value.set(-1,-1);for(const list of [this.botOrigins,this.botRays,this.botCars,this.botCarsOld])for(const v of list.array)v.set(0,0,0,0);}
  reset(list){this.clearBotInputs();this.pressure?.reset();this.pressureScan?.value.set(0,0,0,0);if(this.pressureRecruit)this.pressureRecruit.value=0;this.streaming.value=list?0:1;this.generation=(this.generation||0)+1;const p=this.pos.value.array,s=this.state.value.array,v=this.vel.value.array;p.fill(0);s.fill(0);v.fill(0);const sites=regionsNear(0,0);let seed=74129;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};for(let i=0;i<this.count;i++){let x,z,hp=90;if(list){const a=list[i];x=a?.x??180;z=a?.z??180;hp=a?(a.hp??90):0;}else{const site=sites[i%sites.length];let tries=0;do{const q=encounterOffset(i,rand()*Math.PI*2,rand());x=site.x+q.x;z=site.z+q.z;}while(++tries<30&&(solid(x,z,2,false)||Math.hypot(x,z-70)<28));if(site.kind==='home'){const q=spawnCrowdOffset(i);x=q.x;z=q.z;}}
     const y=height(x,z),r=rand(),type=list?(list[i]?.type??0):(r>.93?2:r>.73?1:0);if(hp>0)hp=list?(list[i]?.hp??(type===2?340:type===1?60:90)):(type===2?340:type===1?60:90);p.set([x,y,z,0],i*4);s.set([hp,r,-10,list&&!list[i]?-1:type],i*4);v.set([0,0,0,hp?0:10],i*4);
   }
@@ -86,3 +87,4 @@ export class Horde{
  async readStats(){if(this.pending)return this.pending;const generation=this.generation;this.pending=(async()=>{try{const b=await this.renderer.getArrayBufferAsync(this.counters.value);if(generation!==this.generation)return this.stats;const c=new Uint32Array(b);this.stats={kills:c[0],hits:c[1],carKills:c[2],bombKills:c[3],carContacts:c[4],contactMs:c[5],scrap:c[6],skidKills:c[7],jetContacts:c[8],footContactMs:c[9],cabContactMs:c[10],meleeHits:c[11],missileKills:c[12],botGunKills:c[13],botRamKills:c[14],alive:c[CROWD_COUNTERS.alive],nearby:c[CROWD_COUNTERS.nearby],recycled:c[CROWD_COUNTERS.recycled]};return this.stats;}finally{this.pending=null;}})();return this.pending;}
  async sample(n=8){const p=new Float32Array(await this.renderer.getArrayBufferAsync(this.pos.value)),s=new Float32Array(await this.renderer.getArrayBufferAsync(this.state.value));return Array.from({length:n},(_,i)=>({x:p[i*4],y:p[i*4+1],z:p[i*4+2],hp:s[i*4]}));}
 }
+
