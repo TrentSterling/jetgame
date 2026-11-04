@@ -45,11 +45,11 @@ export function zombieGeometry({indexed=true}={}){
   }
   g.dispose();
  }
- // Hidden neck, ankle and fingertip-root caps are omitted where adjoining surfaces overlap.
- // Their saved triangles buy an extra rounded skull ring without growing the budget.
+ // Hidden neck, wrist, ankle and finger-root caps are omitted only where forms overlap.
+ // Their saved triangles fund rounded neck and palm sections without growing the 387-triangle budget.
  // Natural shoulder slope and waist; the neck no longer protrudes as a peg.
  loft([[0,.83,.025,.19,.13],[0,1.00,.005,.175,.125],[0,1.37,.025,.285,.16],[0,1.48,.015,.165,.105]],(row,side)=>side===0?(row===0?'#535044':shirt):side===4?'#505c4f':shirt,0,8,true,1);
- loft([[0,1.44,-.005,.075,.07],[0,1.61,-.025,.07,.07]],skinShadow,0,4,true,0,false);
+ loft([[0,1.43,.012,.079,.071],[0,1.625,-.025,.064,.067]],skinShadow,0,8,true,0,false);
  // Jaw, cheeks, temples, rounded cranium. Front faces remain wide enough for
  // paired eyes and a short nose instead of a projecting triangular muzzle.
  loft([[.006,1.56,-.053,.068,.079],[0,1.68,-.029,.132,.12],[-.008,1.79,-.006,.139,.139],[-.011,1.865,.004,.112,.112],[-.012,1.905,.005,.057,.065]],(row,side)=>row===2&&side>3?'#606b53':side===4?skinShadow:skin,0,8);
@@ -82,15 +82,16 @@ export function zombieGeometry({indexed=true}={}){
   const arm=side<0?1:2,leg=side<0?3:4;
   // Six-sided limbs keep elbows/knees visible while smooth normals remove
   // the old four-sided tube appearance. Hands curl forward from the wrist.
-  loft([[side*.282,1.41,.02,.102,.106,-side*.45],[side*.356,1.16,-.035,.08,.083],[side*.342,.88,-.17,.05,.054]],row=>row===1?shirt:skin,arm,6,true,row=>row===1?1:0);
-  loft([[side*.342,.90,-.17,.047,.045],[side*.332,.785,-.235,.054,.046]],skin,arm,4);
+  loft([[side*.282,1.41,.02,.102,.106,-side*.45],[side*.356,1.16,-.035,.08,.083],[side*.342,.88,-.176,.032,.020]],row=>row===1?shirt:skin,arm,6,true,row=>row===1?1:0,'top');
+  // Crossed wrist/palm overlap closes both ends without a cuff-like hard cap.
+  loft([[side*.345,.94,-.1458,.040,.030],[side*.332,.785,-.235,.060,.042]],skin,arm,6,true,0,'bottom');
   // Split, bent mitten fingers and an opposing thumb read at driving distance
   // without giving every crowd member an expensive articulated hand rig.
-  for(const offset of [-.026,.026])loft([[side*.332+offset,.792,-.235,.021,.035],[side*.329+offset,.735,-.258,.017,.028]],skin,arm,3,false,0,'bottom');
+  for(const offset of [-.026,.026])loft([[side*.332+offset,.792,-.235,.019,.030],[side*.329+offset,.735,-.258,.017,.028]],skin,arm,3,false,0,'bottom');
   triangle([side*.291,.845,-.20],[side*.268,.787,-.235],[side*.31,.791,-.259],skin,arm);
   triangle([side*.291,.845,-.20],[side*.31,.791,-.259],[side*.268,.787,-.235],skinShadow,arm);
-  loft([[side*.122,.85,.025,.108,.12],[side*.145,.48,-.033,.085,.088],[side*.15,.135,.02,.063,.07]],(row,face)=>row===0&&face===0?'#61715e':trousers,leg,6,true,2,'top');
-  loft([[side*.15,.025,-.068,.086,.16],[side*.15,.17,-.024,.08,.12]],boots,leg,6,true,3);
+  loft([[side*.122,.85,.025,.108,.12],[side*.145,.48,-.033,.085,.088],[side*.15,.135,-.016,.052,.048]],(row,face)=>row===0&&face===0?'#61715e':trousers,leg,6,true,2,'top');
+  loft([[side*.15,.025,-.068,.086,.16],[side*.149,.24,-.021,.056,.055]],boots,leg,6,true,3,'bottom');
  }
  const g=new T.InstancedBufferGeometry();
  g.setAttribute('position',new T.Float32BufferAttribute(positions,3));g.setAttribute('normal',new T.Float32BufferAttribute(normals,3));

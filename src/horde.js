@@ -59,9 +59,12 @@ export class Horde{
   Object.assign(this, createKernels(this));
   const geo=zombieGeometry();geo.instanceCount=count;this.trianglesPerEnemy=(geo.index?.count||geo.getAttribute('position').count)/3;
   const p=this.pos.toAttribute(),s=this.state.toAttribute(),v=this.vel.toAttribute();
-  // Existing seed and vertex colors select worn fabric hues; no new instance buffers.
-  const baseColor=attribute('color','vec3'),fabric=step(.012,baseColor.x.sub(baseColor.y));
-  const clothTint=mix(mix(vec3(.63,.85,1.08),vec3(1.08,.64,.52),s.y.mul(3).clamp(0,1)),vec3(.75,.94,.66),s.y.sub(.5).mul(2).clamp(0,1));
+  // Broad fabric palettes read through the crowd without more draws or instance data.
+  // Select the jacket atlas tile explicitly, so skin/eyes/wounds keep their colors.
+  const baseColor=attribute('color','vec3'),materialUV=attribute('uv','vec2');
+  const fabric=step(.25,materialUV.x).mul(step(materialUV.x,.5)).mul(step(materialUV.y,.5));
+  const wardrobe=s.y.mul(13.37).fract();
+  const clothTint=mix(mix(vec3(.54,.74,.94),vec3(1.16,.67,.50),step(.33,wardrobe)),vec3(.72,1.00,.62),step(.66,wardrobe));
   const variedColor=baseColor.mul(mix(vec3(1),clothTint,fabric)).mul(texture(zombieTexture()).rgb);
   const m=new T.MeshStandardNodeMaterial({roughness:.96});m.positionNode=bodyFn({q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time});m.normalNode=transformNormalToView(normalFn({n:normalLocal,q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time}));m.colorNode=mix(variedColor.mul(mix(vec3(.57,.65,.53),vec3(1.1,.84,.53),s.y)).mul(mix(vec3(1),mix(vec3(1.55,.46,.22),vec3(.47,.66,.85),step(1.5,s.w)),step(.5,s.w))),vec3(1.7,1.6,1.3),step(this.time,s.z)).mul(mix(.32,1,step(.01,s.x)));
   this.mesh=new T.Mesh(geo,m);this.mesh.frustumCulled=false;this.mesh.castShadow=true;this.mesh.receiveShadow=true;scene.add(this.mesh);

@@ -8,34 +8,36 @@ export function zombieTexture(){
  const width=512,height=256,data=new Uint8Array(width*height*4);
  const clamp=x=>Math.max(0,Math.min(255,Math.round(x)));
  const hash=(x,y)=>{let n=Math.imul(x+41,374761393)^Math.imul(y+67,668265263);n=Math.imul(n^(n>>>13),1274126177);return ((n^(n>>>16))>>>0)/4294967295;};
+ const smoothNoise=(u,v)=>{const x=Math.floor(u),y=Math.floor(v),fx=u-x,fy=v-y,sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy);return (hash(x,y)*(1-sx)+hash(x+1,y)*sx)*(1-sy)+(hash(x,y+1)*(1-sx)+hash(x+1,y+1)*sx)*sy;};
  const oval=(u,v,x,y,rx,ry)=>Math.max(0,1-((u-x)/rx)**2-((v-y)/ry)**2);
  for(let y=0;y<height;y++)for(let x=0;x<width;x++){
   const tile=Math.floor(x/128)+Math.floor(y/128)*4;
   // Two-pixel edge extrusion protects atlas borders through the first mip levels.
   const u=Math.max(0,Math.min(1,((x%128)-2)/124)),v=Math.max(0,Math.min(1,((y%128)-2)/124));
   const fine=hash(Math.floor(u*124),Math.floor(v*124))-.5;
-  const broad=hash(Math.floor(u*16),Math.floor(v*12))-.5;
+  const broad=smoothNoise(u*9,v*7)-.5;
   let rgb=[255,255,255];
   if(tile===0){
    const blotch=oval(u,v,.29,.56,.15,.26)+oval(u,v,.73,.2,.18,.16);
    const vein=Math.max(0,1-Math.abs(u-(.36+.035*Math.sin(v*19)))*180)*Math.max(0,1-Math.abs(v-.52)*2.4);
-   const value=242+fine*15+broad*8;
-   rgb=[value-blotch*24-vein*18,value-blotch*12-vein*11,value-blotch*4-vein*7];
+   const value=238+fine*13+broad*22;
+   rgb=[value-blotch*38-vein*22,value-blotch*21-vein*14,value-blotch*10-vein*10];
   }else if(tile===1){
    const weave=((Math.floor(u*124)+Math.floor(v*124))%2)*4;
    const seam=Math.max(0,1-Math.abs(u-.0625)*180);
    const stitches=seam*(Math.floor(v*42)%2?26:-18);
-   const grime=oval(u,v,.1,.08,.22,.22)*43+oval(u,v,.6,.24,.18,.2)*23;
+   const grime=oval(u,v,.1,.08,.22,.24)*64+oval(u,v,.6,.24,.21,.25)*38;
    const fold=Math.sin(v*53+Math.sin(u*15)*2)*Math.max(0,1-v)*7;
    const tear=oval(u,v,.145,.37,.03,.10)+oval(u,v,.66,.6,.035,.06);
    const button=Math.abs(u-.0625)<.012&&[.44,.65,.85].some(t=>Math.abs(v-t)<.014)?48:0;
-   const value=242+fine*13+broad*5+weave+fold-grime-stitches-tear*82-button;
+   const wear=oval(u,v,.06,.78,.11,.20)*14+oval(u,v,.57,.70,.12,.23)*10;
+   const value=237+fine*10+broad*20+weave+fold+wear-grime-stitches-tear*96-button;
    rgb=[value,value-2,value-5];
   }else if(tile===2){
    const seam=Math.max(0,1-Math.min(Math.abs(u-.28),Math.abs(u-.78))*110)*23;
-   const knee=oval(u,v,.08,.5,.15,.16)*19;
+   const knee=oval(u,v,.08,.5,.15,.16)*28;
    const crease=Math.sin(v*64+Math.sin(u*20))*7*(1-v);
-   const value=234+fine*17+broad*7+((Math.floor((u+v)*100)%3)?0:7)+knee+crease-seam;
+   const value=230+fine*14+broad*17+((Math.floor((u+v)*100)%3)?0:7)+knee+crease-seam;
    rgb=[value-4,value,value+3];
   }else if(tile===3){
    const scuff=oval(u,v,.07,.3,.18,.2)*35+oval(u,v,.59,.52,.12,.12)*23;
