@@ -3,10 +3,11 @@ import {spawnCrowdOffset} from './spawn-layout.js';
 import {isRegionalGuard,localCrowdOffset,localCrowdClearance} from './local-crowd.js';
 import {CrowdPressure,CROWD_COUNTER_COUNT,CROWD_COUNTERS,CROWD_PRESSURE} from './crowd-pressure.js';
 import * as T from 'three/webgpu';
-import {Fn,instancedArray,uniform,uniformArray,wgslFn,instanceIndex,positionGeometry,normalLocal,attribute,vertexColor,transformNormalToView,mix,vec3,step,sin} from 'three/tsl';
+import {Fn,instancedArray,uniform,uniformArray,wgslFn,instanceIndex,positionGeometry,normalLocal,attribute,vertexColor,transformNormalToView,mix,vec3,step,sin,texture} from 'three/tsl';
 import {createKernels} from './kernels.js';
 import {addGore} from './gore.js';
 import {zombieGeometry} from './zombie-art.js';
+import {zombieTexture} from './zombie-texture.js';
 import {GRID,HALF,CELL,solid,height} from './nav.js';
 
 const bodyFn=wgslFn(`fn bodyVertex(q:vec3f,part:f32,p:vec4f,s:vec4f,v:vec4f,time:f32)->vec3f{
@@ -56,12 +57,12 @@ export class Horde{
   this.viewProjection=uniform(new T.Matrix4());this.viewEnabled=uniform(0);
   this.blood=instancedArray(count*3,'vec4');
   Object.assign(this, createKernels(this));
-  const geo=zombieGeometry();geo.instanceCount=count;this.trianglesPerEnemy=geo.getAttribute('position').count/3;
+  const geo=zombieGeometry();geo.instanceCount=count;this.trianglesPerEnemy=(geo.index?.count||geo.getAttribute('position').count)/3;
   const p=this.pos.toAttribute(),s=this.state.toAttribute(),v=this.vel.toAttribute();
   // Existing seed and vertex colors select worn fabric hues; no new instance buffers.
   const baseColor=attribute('color','vec3'),fabric=step(.012,baseColor.x.sub(baseColor.y));
   const clothTint=mix(mix(vec3(.63,.85,1.08),vec3(1.08,.64,.52),s.y.mul(3).clamp(0,1)),vec3(.75,.94,.66),s.y.sub(.5).mul(2).clamp(0,1));
-  const variedColor=baseColor.mul(mix(vec3(1),clothTint,fabric));
+  const variedColor=baseColor.mul(mix(vec3(1),clothTint,fabric)).mul(texture(zombieTexture()).rgb);
   const m=new T.MeshStandardNodeMaterial({roughness:.96});m.positionNode=bodyFn({q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time});m.normalNode=transformNormalToView(normalFn({n:normalLocal,q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time}));m.colorNode=mix(variedColor.mul(mix(vec3(.57,.65,.53),vec3(1.1,.84,.53),s.y)).mul(mix(vec3(1),mix(vec3(1.55,.46,.22),vec3(.47,.66,.85),step(1.5,s.w)),step(.5,s.w))),vec3(1.7,1.6,1.3),step(this.time,s.z)).mul(mix(.32,1,step(.01,s.x)));
   this.mesh=new T.Mesh(geo,m);this.mesh.frustumCulled=false;this.mesh.castShadow=true;this.mesh.receiveShadow=true;scene.add(this.mesh);
   this.reset();

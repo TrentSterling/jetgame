@@ -3,23 +3,24 @@ import * as T from 'three/webgpu';
 // One articulated, vertex-coloured mesh for the whole GPU crowd. Rounded
 // limb sections and a compact human head spend detail on the silhouette;
 // clothing/face accents share its existing material and part attributes.
-export function zombieGeometry(){
- const positions=[],normals=[],colors=[],parts=[];
+export function zombieGeometry({indexed=true}={}){
+ const positions=[],normals=[],colors=[],parts=[],uvs=[];
+ const atlasUV=(u,v,region)=>[(region%4+(2+u*124)/128)/4,(Math.floor(region/4)+(2+v*124)/128)/2];
  const skin='#a1a184',skinShadow='#72785f',shirt='#756c56',trousers='#40534e',boots='#263a35';
  const colorCache=new Map();
  const colorFor=color=>{if(!colorCache.has(color))colorCache.set(color,new T.Color(color));return colorCache.get(color);};
  function triangle(a,b,c,color,part=0){
   const ab=new T.Vector3(...b).sub(new T.Vector3(...a)),ac=new T.Vector3(...c).sub(new T.Vector3(...a)),n=ab.cross(ac).normalize(),rgb=colorFor(color);
-  for(const p of [a,b,c]){positions.push(...p);normals.push(n.x,n.y,n.z);colors.push(rgb.r,rgb.g,rgb.b);parts.push(part);}
+  for(const p of [a,b,c]){positions.push(...p);normals.push(n.x,n.y,n.z);colors.push(rgb.r,rgb.g,rgb.b);parts.push(part);uvs.push(...atlasUV(.5,.5,4));}
  }
  function quad(a,b,c,d,color,part=0){triangle(a,b,c,color,part);triangle(a,c,d,color,part);}
- function loft(rings,palette,part=0,segments=6,smooth=true){
+ function loft(rings,palette,part=0,segments=6,smooth=true,region=0,caps=true){
   if(rings[0][1]>rings.at(-1)[1])rings=[...rings].reverse();
   const p=[],indices=[],faceColors=[];
-  const ring=([x,y,z,w,d])=>{
+  const ring=([x,y,z,w,d,slope=0])=>{
    if(segments===8)return [[x-w*.68,y,z-d],[x+w*.68,y,z-d],[x+w,y,z-d*.58],[x+w,y,z+d*.58],[x+w*.68,y,z+d],[x-w*.68,y,z+d],[x-w,y,z+d*.58],[x-w,y,z-d*.58]];
    if(segments===4)return [[x-w,y,z-d],[x+w,y,z-d],[x+w,y,z+d],[x-w,y,z+d]];
-   return Array.from({length:segments},(_,i)=>{const a=(i+.5)/segments*Math.PI*2;return [x+Math.sin(a)*w,y,z-Math.cos(a)*d];});
+   return Array.from({length:segments},(_,i)=>{const a=(i+.5)/segments*Math.PI*2;return [x+Math.sin(a)*w,y+Math.sin(a)*w*slope,z-Math.cos(a)*d];});
   };
   const rr=rings.map(ring);for(const r of rr)for(const q of r)p.push(...q);
   const add=(a,b,c,row,side)=>{indices.push(a,b,c);faceColors.push(typeof palette==='function'?palette(row,side):palette);};
@@ -28,7 +29,7 @@ export function zombieGeometry(){
    add(a,b,c,row,i);add(a,c,d,row,i);
   }
   const sideFaceCount=faceColors.length;
-  for(let i=1;i<segments-1;i++){add(0,i,i+1,0,segments);const t=(rings.length-1)*segments;add(t,t+i+1,t+i,rings.length-2,segments);}
+  for(let i=1;i<segments-1;i++){if(caps===true||caps==='bottom')add(0,i,i+1,0,segments);const t=(rings.length-1)*segments;if(caps===true||caps==='top')add(t,t+i+1,t+i,rings.length-2,segments);}
   // Cap faces are hard boundaries. Their fan must not drag a tapered wrist
   // or boot's shared side normal through the surface at an extreme corner.
   const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p,3));g.setIndex(indices.slice(0,sideFaceCount*3));g.computeVertexNormals();
@@ -36,22 +37,30 @@ export function zombieGeometry(){
   for(let face=0;face<faceColors.length;face++){
    const rgb=colorFor(faceColors[face]),ii=indices.slice(face*3,face*3+3),round=smooth&&face<sideFaceCount;
    if(!round){pa.fromBufferAttribute(vertex,ii[0]);pb.fromBufferAttribute(vertex,ii[1]);pc.fromBufferAttribute(vertex,ii[2]);flat.copy(pb).sub(pa).cross(pc.sub(pa)).normalize();}
-   for(const i of ii){positions.push(vertex.getX(i),vertex.getY(i),vertex.getZ(i));normals.push(...(round?[n.getX(i),n.getY(i),n.getZ(i)]:flat.toArray()));colors.push(rgb.r,rgb.g,rgb.b);parts.push(part);}
+   for(const i of ii){positions.push(vertex.getX(i),vertex.getY(i),vertex.getZ(i));normals.push(...(round?[n.getX(i),n.getY(i),n.getZ(i)]:flat.toArray()));colors.push(rgb.r,rgb.g,rgb.b);parts.push(part);
+    // Each loft owns a continuous cylindrical strip. Duplicate the wrap seam
+    // rather than interpolating across unrelated atlas tiles. Caps sample their edge.
+    let u=(i%segments)/segments;if(face<sideFaceCount&&Math.floor((face%(segments*2))/2)===segments-1&&i%segments===0)u=1;
+    let v=Math.floor(i/segments)/(rings.length-1);if(face>=sideFaceCount){u=.5;v=.5;}uvs.push(...atlasUV(u,v,typeof region==='function'?region(Math.min(rings.length-2,Math.floor(face/(segments*2)))):region));}
   }
   g.dispose();
  }
+ // Hidden neck, ankle and fingertip-root caps are omitted where adjoining surfaces overlap.
+ // Their saved triangles buy an extra rounded skull ring without growing the budget.
  // Natural shoulder slope and waist; the neck no longer protrudes as a peg.
- loft([[0,.83,.025,.19,.13],[0,1.00,.005,.175,.125],[0,1.37,.025,.285,.16],[0,1.48,.015,.165,.105]],(row,side)=>side===0?(row===0?'#535044':shirt):side===4?'#505c4f':shirt,0,8);
- loft([[0,1.44,-.005,.075,.07],[0,1.61,-.025,.07,.07]],skinShadow,0,4);
+ loft([[0,.83,.025,.19,.13],[0,1.00,.005,.175,.125],[0,1.37,.025,.285,.16],[0,1.48,.015,.165,.105]],(row,side)=>side===0?(row===0?'#535044':shirt):side===4?'#505c4f':shirt,0,8,true,1);
+ loft([[0,1.44,-.005,.075,.07],[0,1.61,-.025,.07,.07]],skinShadow,0,4,true,0,false);
  // Jaw, cheeks, temples, rounded cranium. Front faces remain wide enough for
  // paired eyes and a short nose instead of a projecting triangular muzzle.
- loft([[0,1.56,-.052,.085,.085],[0,1.65,-.032,.128,.12],[0,1.80,-.015,.145,.135],[0,1.88,-.005,.105,.105]],(row,side)=>row===2&&side>0?'#495747':side===4?skinShadow:skin,0,8);
+ loft([[.006,1.56,-.053,.068,.079],[0,1.68,-.029,.132,.12],[-.008,1.79,-.006,.139,.139],[-.011,1.865,.004,.112,.112],[-.012,1.905,.005,.057,.065]],(row,side)=>row===2&&side>3?'#606b53':side===4?skinShadow:skin,0,8);
+ // Keep socket/brow edges inside the flat front facial strip. Old wide plates
+ // crossed onto the receding temple bevel and appeared to float like glasses.
  for(const side of [-1,1]){
-  const x=side*.071;
-  const tilt=side<0?.018:-.008;
-  quad([x-.043,1.738+tilt,-.158],[x+.043,1.738-tilt,-.158],[x+.034,1.705-tilt*.3,-.161],[x-.034,1.705+tilt*.3,-.161],'#303b30');
-  quad([x-.046,1.751+tilt,-.156],[x+.044,1.751-tilt,-.156],[x+.043,1.739-tilt,-.167],[x-.044,1.739+tilt,-.167],skinShadow);
-  triangle([x-.012,1.719,-.164],[x+.011,1.720,-.164],[x+.003,1.709,-.164],'#b7bba3');
+  const x=side*.052;
+  const tilt=side<0?.012:-.004;
+  quad([x-.033,1.748+tilt,-.151],[x+.033,1.748-tilt,-.151],[x+.027,1.698-tilt*.3,-.153],[x-.029,1.698+tilt*.3,-.153],'#30352c');
+  quad([x-.035,1.751+tilt,-.149],[x+.034,1.751-tilt,-.149],[x+.033,1.739-tilt,-.155],[x-.034,1.739+tilt,-.155],skinShadow);
+  triangle([x-.009,1.723,-.156],[x+.009,1.724,-.156],[x+.002,1.710,-.156],'#d0c394');
   // Ears are broad enough to read in profile without long exposed facets.
   triangle([side*.139,1.765,-.035],[side*.17,1.734,-.028],[side*.14,1.684,-.035],skinShadow);
   triangle([side*.139,1.765,-.035],[side*.14,1.684,-.035],[side*.17,1.734,-.028],skin);
@@ -60,26 +69,45 @@ export function zombieGeometry(){
  triangle([-.021,1.738,-.154],[0,1.677,-.194],[-.026,1.675,-.153],skinShadow);
  triangle([.021,1.738,-.154],[.027,1.675,-.153],[0,1.677,-.194],'#b1ae8e');
  triangle([-.026,1.675,-.153],[0,1.677,-.194],[.027,1.675,-.153],'#56654e');
- quad([-.045,1.644,-.155],[.041,1.637,-.155],[.026,1.586,-.145],[-.035,1.605,-.149],'#38251f');
+ quad([-.049,1.648,-.157],[.044,1.641,-.157],[.033,1.583,-.143],[-.036,1.598,-.150],'#38251f');
  triangle([-.034,1.64,-.157],[.028,1.635,-.157],[.015,1.627,-.158],'#b8b69c');
  triangle([-.021,1.605,-.151],[.023,1.591,-.148],[.011,1.606,-.152],'#8d7965');
- triangle([.066,1.689,-.162],[.094,1.661,-.157],[.079,1.618,-.150],'#6f493a');
+ triangle([.059,1.694,-.152],[.083,1.674,-.152],[.065,1.622,-.144],'#765547');
  // Lapel and asymmetrical tears sit just above their actual jacket surface.
- triangle([-.108,1.426,-.116],[-.028,1.458,-.107],[-.034,1.277,-.137],'#96907a');
- triangle([.025,1.455,-.107],[.115,1.423,-.116],[.034,1.279,-.137],'#484d40');
+ triangle([-.108,1.426,-.132],[-.028,1.458,-.118],[-.034,1.277,-.154],'#96907a');
+ triangle([.025,1.455,-.118],[.115,1.423,-.133],[.034,1.279,-.154],'#484d40');
  triangle([-.16,.924,-.127],[-.095,.847,-.13],[-.055,.962,-.13],skinShadow);
  triangle([.068,1.17,-.146],[.14,1.245,-.153],[.127,1.08,-.141],'#473c32');
  for(const side of [-1,1]){
   const arm=side<0?1:2,leg=side<0?3:4;
   // Six-sided limbs keep elbows/knees visible while smooth normals remove
   // the old four-sided tube appearance. Hands curl forward from the wrist.
-  loft([[side*.292,1.41,.02,.102,.106],[side*.356,1.16,-.035,.08,.083],[side*.342,.88,-.17,.05,.054]],row=>row===1?shirt:skin,arm,6);
-  loft([[side*.342,.90,-.17,.047,.045],[side*.332,.755,-.235,.061,.055]],skinShadow,arm,4);
-  loft([[side*.122,.85,.025,.108,.12],[side*.145,.48,-.033,.085,.088],[side*.15,.135,.02,.063,.07]],(row,face)=>row===0&&face===0?'#61715e':trousers,leg,6);
-  loft([[side*.15,.025,-.068,.086,.16],[side*.15,.17,-.024,.08,.12]],boots,leg,6);
+  loft([[side*.282,1.41,.02,.102,.106,-side*.45],[side*.356,1.16,-.035,.08,.083],[side*.342,.88,-.17,.05,.054]],row=>row===1?shirt:skin,arm,6,true,row=>row===1?1:0);
+  loft([[side*.342,.90,-.17,.047,.045],[side*.332,.785,-.235,.054,.046]],skin,arm,4);
+  // Split, bent mitten fingers and an opposing thumb read at driving distance
+  // without giving every crowd member an expensive articulated hand rig.
+  for(const offset of [-.026,.026])loft([[side*.332+offset,.792,-.235,.021,.035],[side*.329+offset,.735,-.258,.017,.028]],skin,arm,3,false,0,'bottom');
+  triangle([side*.291,.845,-.20],[side*.268,.787,-.235],[side*.31,.791,-.259],skin,arm);
+  triangle([side*.291,.845,-.20],[side*.31,.791,-.259],[side*.268,.787,-.235],skinShadow,arm);
+  loft([[side*.122,.85,.025,.108,.12],[side*.145,.48,-.033,.085,.088],[side*.15,.135,.02,.063,.07]],(row,face)=>row===0&&face===0?'#61715e':trousers,leg,6,true,2,'top');
+  loft([[side*.15,.025,-.068,.086,.16],[side*.15,.17,-.024,.08,.12]],boots,leg,6,true,3);
  }
  const g=new T.InstancedBufferGeometry();
  g.setAttribute('position',new T.Float32BufferAttribute(positions,3));g.setAttribute('normal',new T.Float32BufferAttribute(normals,3));
+ g.setAttribute('uv',new T.Float32BufferAttribute(uvs,2));
  g.setAttribute('color',new T.Float32BufferAttribute(colors,3));g.setAttribute('part',new T.Float32BufferAttribute(parts,1));
+ // Index only bit-identical full attribute tuples. UV seams, hard edges,
+ // material boundaries and limb tags stay split; triangle order is untouched.
+ // The test-only expanded form proves this is a lossless representation change.
+ if(indexed){
+  const names=Object.keys(g.attributes),unique=new Map(),indices=[],buffers=Object.fromEntries(names.map(name=>[name,[]]));
+  for(let i=0;i<g.attributes.position.count;i++){
+   const values=names.map(name=>{const a=g.attributes[name];return Array.from(a.array.subarray(i*a.itemSize,(i+1)*a.itemSize));});
+   const key=values.map(v=>v.map(n=>Object.is(n,-0)?'-0':String(n)).join(',')).join('|');let id=unique.get(key);
+   if(id===undefined){id=unique.size;unique.set(key,id);names.forEach((name,n)=>buffers[name].push(...values[n]));}indices.push(id);
+  }
+  for(const name of names)g.setAttribute(name,new T.Float32BufferAttribute(buffers[name],g.attributes[name].itemSize));
+  g.setIndex(indices);
+ }
  return g;
 }
