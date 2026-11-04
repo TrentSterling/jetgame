@@ -64,9 +64,9 @@ export class Horde{
   const baseColor=attribute('color','vec3'),materialUV=attribute('uv','vec2');
   const fabric=step(.25,materialUV.x).mul(step(materialUV.x,.5)).mul(step(materialUV.y,.5));
   const wardrobe=s.y.mul(13.37).fract();
-  const clothTint=mix(mix(vec3(.54,.74,.94),vec3(1.16,.67,.50),step(.33,wardrobe)),vec3(.72,1.00,.62),step(.66,wardrobe));
+  const clothTint=mix(mix(vec3(.42,.60,.74),vec3(.78,.43,.32),step(.33,wardrobe)),vec3(.58,.64,.42),step(.66,wardrobe));
   const variedColor=baseColor.mul(mix(vec3(1),clothTint,fabric)).mul(texture(zombieTexture()).rgb);
-  const m=new T.MeshStandardNodeMaterial({roughness:.96});m.positionNode=bodyFn({q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time});m.normalNode=transformNormalToView(normalFn({n:normalLocal,q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time}));m.colorNode=mix(variedColor.mul(mix(vec3(.57,.65,.53),vec3(1.1,.84,.53),s.y)).mul(mix(vec3(1),mix(vec3(1.55,.46,.22),vec3(.47,.66,.85),step(1.5,s.w)),step(.5,s.w))),vec3(1.7,1.6,1.3),step(this.time,s.z)).mul(mix(.32,1,step(.01,s.x)));
+  const m=new T.MeshStandardNodeMaterial({roughness:.96});m.positionNode=bodyFn({q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time});m.normalNode=transformNormalToView(normalFn({n:normalLocal,q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time}));m.colorNode=mix(variedColor.mul(mix(vec3(.84,.89,.82),vec3(1.04,.98,.90),s.y)).mul(mix(vec3(1),mix(vec3(1.12,.76,.67),vec3(.72,.82,.93),step(1.5,s.w)),step(.5,s.w).mul(fabric))),vec3(1.7,1.6,1.3),step(this.time,s.z)).mul(mix(.32,1,step(.01,s.x)));
   this.mesh=new T.Mesh(geo,m);this.mesh.frustumCulled=false;this.mesh.castShadow=true;this.mesh.receiveShadow=true;scene.add(this.mesh);
   this.reset();
   this.gore=addGore(this,scene);
@@ -91,4 +91,5 @@ export class Horde{
  async readStats(){if(this.pending)return this.pending;const generation=this.generation;this.pending=(async()=>{try{const b=await this.renderer.getArrayBufferAsync(this.counters.value);if(generation!==this.generation)return this.stats;const c=new Uint32Array(b);this.stats={kills:c[0],hits:c[1],carKills:c[2],bombKills:c[3],carContacts:c[4],contactMs:c[5],scrap:c[6],skidKills:c[7],jetContacts:c[8],footContactMs:c[9],cabContactMs:c[10],meleeHits:c[11],missileKills:c[12],botGunKills:c[13],botRamKills:c[14],alive:c[CROWD_COUNTERS.alive],nearby:c[CROWD_COUNTERS.nearby],recycled:c[CROWD_COUNTERS.recycled]};return this.stats;}finally{this.pending=null;}})();return this.pending;}
  async sample(n=8){const p=new Float32Array(await this.renderer.getArrayBufferAsync(this.pos.value)),s=new Float32Array(await this.renderer.getArrayBufferAsync(this.state.value));return Array.from({length:n},(_,i)=>({x:p[i*4],y:p[i*4+1],z:p[i*4+2],hp:s[i*4]}));}
 }
+
 

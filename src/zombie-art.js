@@ -6,7 +6,7 @@ import * as T from 'three/webgpu';
 export function zombieGeometry({indexed=true}={}){
  const positions=[],normals=[],colors=[],parts=[],uvs=[];
  const atlasUV=(u,v,region)=>[(region%4+(2+u*124)/128)/4,(Math.floor(region/4)+(2+v*124)/128)/2];
- const skin='#a1a184',skinShadow='#72785f',shirt='#756c56',trousers='#40534e',boots='#263a35';
+ const skin='#b4b39b',skinShadow='#737a64',shirt='#a29b88',trousers='#586064',boots='#393835';
  const colorCache=new Map();
  const colorFor=color=>{if(!colorCache.has(color))colorCache.set(color,new T.Color(color));return colorCache.get(color);};
  function triangle(a,b,c,color,part=0){
@@ -46,13 +46,13 @@ export function zombieGeometry({indexed=true}={}){
   g.dispose();
  }
  // Hidden neck, wrist, ankle and finger-root caps are omitted only where forms overlap.
- // Their saved triangles fund rounded neck and palm sections without growing the 387-triangle budget.
+ // Detail stays in one shared opaque mesh; no per-zombie meshes or textures.
  // Natural shoulder slope and waist; the neck no longer protrudes as a peg.
- loft([[0,.83,.025,.19,.13],[0,1.00,.005,.175,.125],[0,1.37,.025,.285,.16],[0,1.48,.015,.165,.105]],(row,side)=>side===0?(row===0?'#535044':shirt):side===4?'#505c4f':shirt,0,8,true,1);
- loft([[0,1.43,.012,.079,.071],[0,1.625,-.025,.064,.067]],skinShadow,0,8,true,0,false);
+ loft([[0,.83,.025,.20,.14],[0,1.00,.005,.163,.112],[.012,1.23,.025,.235,.148],[0,1.37,.025,.285,.16],[0,1.48,.015,.165,.105]],(row,side)=>side===0?(row===0?'#535044':shirt):side===4?'#8d897b':shirt,0,8,true,1);
+ loft([[0,1.43,.012,.079,.071],[0,1.565,-.025,.064,.067]],skinShadow,0,8,true,0,false);
  // Jaw, cheeks, temples, rounded cranium. Front faces remain wide enough for
  // paired eyes and a short nose instead of a projecting triangular muzzle.
- loft([[.006,1.56,-.053,.068,.079],[0,1.68,-.029,.132,.12],[-.008,1.79,-.006,.139,.139],[-.011,1.865,.004,.112,.112],[-.012,1.905,.005,.057,.065]],(row,side)=>row===2&&side>3?'#606b53':side===4?skinShadow:skin,0,8);
+ loft([[.006,1.56,-.053,.068,.079],[0,1.68,-.029,.132,.12],[-.008,1.79,-.006,.139,.139],[-.011,1.865,.004,.112,.112],[-.012,1.905,.005,.057,.065]],(row,side)=>row===2&&side>3?'#606b53':side===4?skinShadow:skin,0,8,true,5);
  // Keep socket/brow edges inside the flat front facial strip. Old wide plates
  // crossed onto the receding temple bevel and appeared to float like glasses.
  for(const side of [-1,1]){
@@ -78,11 +78,25 @@ export function zombieGeometry({indexed=true}={}){
  triangle([.025,1.455,-.118],[.115,1.423,-.133],[.034,1.279,-.154],'#484d40');
  triangle([-.16,.924,-.127],[-.095,.847,-.13],[-.055,.962,-.13],skinShadow);
  triangle([.068,1.17,-.146],[.14,1.245,-.153],[.127,1.08,-.141],'#473c32');
+ // Open jacket exposes an undershirt. Tailored lapels, pockets and a belt
+ // break the old uninterrupted tube silhouette using the existing draw call.
+ quad([-.041,1.43,-.137],[.042,1.43,-.137],[.043,1.03,-.121],[-.044,1.03,-.121],'#b0aa91');
+ quad([-.045,1.10,-.127],[.044,1.10,-.127],[.045,.92,-.142],[-.046,.92,-.142],'#534a40');
+ quad([-.108,.938,-.13],[.108,.938,-.13],[.112,.899,-.139],[-.112,.899,-.139],'#3b332d');
+ quad([-.024,.94,-.141],[.026,.94,-.141],[.026,.901,-.15],[-.024,.901,-.15],'#858474');
+ for(const side of [-1,1]){
+  const x=side*.14;
+  quad([x-.045,1.30,-.154],[x+.045,1.30,-.154],[x+.040,1.20,-.15],[x-.04,1.20,-.15],'#787569');
+  triangle([x-.045,1.30,-.158],[x+.045,1.30,-.158],[x,1.274,-.16],'#b6ae97');
+  triangle([side*.19,.86,-.12],[side*.105,.84,-.132],[side*.16,.79,-.12],shirt);
+ }
  for(const side of [-1,1]){
   const arm=side<0?1:2,leg=side<0?3:4;
   // Six-sided limbs keep elbows/knees visible while smooth normals remove
   // the old four-sided tube appearance. Hands curl forward from the wrist.
-  loft([[side*.282,1.41,.02,.102,.106,-side*.45],[side*.356,1.16,-.035,.08,.083],[side*.342,.88,-.176,.032,.020]],row=>row===1?shirt:skin,arm,6,true,row=>row===1?1:0,'top');
+  loft([[side*.282,1.41,.02,.112,.111,-side*.45],[side*.356,1.16,-.035,.076,.080],[side*.361,1.10,-.058,.073,.072]],shirt,arm,6,true,1,'top');
+  // Exposed bony forearms below a ragged elbow-length sleeve.
+  loft([[side*.361,1.12,-.05,.059,.061],[side*.363,1.01,-.103,.052,.049],[side*.342,.88,-.176,.032,.024]],skin,arm,6,true,0,false);
   // Crossed wrist/palm overlap closes both ends without a cuff-like hard cap.
   loft([[side*.345,.94,-.1458,.040,.030],[side*.332,.785,-.235,.060,.042]],skin,arm,6,true,0,'bottom');
   // Split, bent mitten fingers and an opposing thumb read at driving distance
@@ -90,8 +104,18 @@ export function zombieGeometry({indexed=true}={}){
   for(const offset of [-.026,.026])loft([[side*.332+offset,.792,-.235,.019,.030],[side*.329+offset,.735,-.258,.017,.028]],skin,arm,3,false,0,'bottom');
   triangle([side*.291,.845,-.20],[side*.268,.787,-.235],[side*.31,.791,-.259],skin,arm);
   triangle([side*.291,.845,-.20],[side*.31,.791,-.259],[side*.268,.787,-.235],skinShadow,arm);
-  loft([[side*.122,.85,.025,.108,.12],[side*.145,.48,-.033,.085,.088],[side*.15,.135,-.016,.052,.048]],(row,face)=>row===0&&face===0?'#61715e':trousers,leg,6,true,2,'top');
+  loft([[side*.122,.85,.025,.108,.12],[side*.139,.58,-.016,.088,.091],[side*.15,.43,-.051,.069,.072],[side*.15,.135,-.016,.052,.048]],(row,face)=>row===0&&face===0?'#61715e':trousers,leg,6,true,2,'top');
   loft([[side*.15,.025,-.068,.086,.16],[side*.149,.24,-.021,.056,.055]],boots,leg,6,true,3,'bottom');
+ }
+ // Human proportions and a permanently stooped upper spine. The head is
+ // smaller than the old toy-like cranium; the neck remains buried in the collar.
+ for(let i=0;i<positions.length;i+=3){
+  let x=positions[i],y=positions[i+1],z=positions[i+2];
+  if(y>1.55){x*=.86;y=1.49+(y-1.55)*.90;z=-.025+(z+.025)*.88;
+   normals[i]/=.86;normals[i+1]/=.90;normals[i+2]/=.88;}
+  if(y>1.15){z-=(y-1.15)*.20;normals[i+1]+=.20*normals[i+2];}
+  positions[i]=x;positions[i+1]=y;positions[i+2]=z;
+  const n=Math.hypot(normals[i],normals[i+1],normals[i+2]);for(let j=0;j<3;j++)normals[i+j]/=n||1;
  }
  const g=new T.InstancedBufferGeometry();
  g.setAttribute('position',new T.Float32BufferAttribute(positions,3));g.setAttribute('normal',new T.Float32BufferAttribute(normals,3));
@@ -112,3 +136,4 @@ export function zombieGeometry({indexed=true}={}){
  }
  return g;
 }
+
