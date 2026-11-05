@@ -591,7 +591,7 @@ function warmBattlefield(){
 }
 const startup=startupUI(renderer,{phaseCount:14,onChange:state=>{
  ui.screen=state.failed?'error':state.ready?'start':'loading';
- if(state.failed){paused=true;keys.clear();pressed.clear();mouseDown=secondaryDown=false;fx.mixer.setPaused(true);if(document.pointerLockElement===canvas)document.exitPointerLock?.();}
+ if(state.failed){qualityMenu.showError(window.bootError||state.error);paused=true;keys.clear();pressed.clear();mouseDown=secondaryDown=false;fx.mixer.setPaused(true);if(document.pointerLockElement===canvas)document.exitPointerLock?.();}
  updateHUD();
  if(hudReady&&!state.failed){renderer.render(loadingScene,camera);hud.render(renderer);}
 }});
