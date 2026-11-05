@@ -1,3 +1,4 @@
+import {QUALITY} from './quality.js';
 import * as T from 'three/webgpu';
 import {Fn,If,Loop,uint,float,vec3,vec4,uniform,uniformArray,instancedArray,instanceIndex,wgslFn,positionView,cameraViewMatrix,lights,max,pow,length,normalize} from 'three/tsl';
 
@@ -38,12 +39,13 @@ class CombatLightNode extends T.LightingNode{
 }
 export class CombatLighting{
  constructor(scene,renderer){
-  this.scene=scene;this.renderer=renderer;this.clock=0;this.cursor=8;this.entries=Array.from({length:32},()=>({life:0,max:1,pos:new T.Vector3(),color:new T.Color(),power:0,range:0}));
+  this.scene=scene;this.renderer=renderer;this.enabled=QUALITY.dynamicLights;this.area=[];if(!this.enabled)return;this.clock=0;this.cursor=8;this.entries=Array.from({length:32},()=>({life:0,max:1,pos:new T.Vector3(),color:new T.Color(),power:0,range:0}));
   this.positions=uniformArray(Array.from({length:32},()=>new T.Vector4()));this.colors=uniformArray(Array.from({length:32},()=>new T.Vector4()));this.view=uniform(new T.Matrix4());this.proj=uniform(new T.Vector2(1,1));this.masks=instancedArray(16*9*20,'uint');
   this.compute=Fn(()=>{const bits=uint(0).toVar();Loop({start:0,end:32,type:'uint'},({i})=>{const p=this.positions.element(i),view=this.view.mul(vec4(p.xyz,1));If(p.w.greaterThan(0).and(sphereCell({p:vec4(view.xyz,p.w),id:instanceIndex,proj:this.proj})),()=>{bits.bitOrAssign(uint(1).shiftLeft(i));});});this.masks.element(instanceIndex).assign(bits);})().compute(16*9*20);this.compute.name='CombatFroxelMasks';
   this.node=new CombatLightNode(this);this.area=[];
  }
  async init(){
+  if(!this.enabled)return;
   const response=await fetch(new URL('../assets/ltc-arc.bin',import.meta.url));if(!response.ok)throw Error('ARC LTC tables missing');const values=new Float32Array(await response.arrayBuffer());if(values.length!==32768)throw Error('Invalid ARC LTC table');
   const table=data=>{const t=new T.DataTexture(data,64,64,T.RGBAFormat,T.FloatType);t.minFilter=t.magFilter=T.LinearFilter;t.needsUpdate=true;return t;};
   const a=table(values.slice(0,16384)),b=table(values.slice(16384));T.RectAreaLightNode.setLTC({LTC_FLOAT_1:a,LTC_FLOAT_2:b,LTC_HALF_1:a,LTC_HALF_2:b});
@@ -51,13 +53,15 @@ export class CombatLighting{
   const all=[];this.scene.traverse(o=>{if(o.isLight)all.push(o)});this.lightsNode=lights([...all,this.node]);
   this.attach(this.scene);
  }
- attach(root){root.traverse(o=>{if(!o.isMesh)return;for(const mat of Array.isArray(o.material)?o.material:[o.material])if((mat?.isMeshStandardMaterial||mat?.isMeshPhysicalMaterial||mat?.isMeshStandardNodeMaterial||mat?.isMeshPhysicalNodeMaterial)&&mat.lightsNode!==this.lightsNode){mat.lightsNode=this.lightsNode;mat.needsUpdate=true;}});}
- flash(pos,color,power,range,life=.35,slot){const i=slot??(8+(this.cursor++-8)%24),e=this.entries[i];e.pos.copy(pos);e.color.set(color);e.power=power;e.range=range;e.life=e.max=life;}
- clear(){for(const e of this.entries)e.life=0;}
+ attach(root){if(!this.enabled)return;root.traverse(o=>{if(!o.isMesh)return;for(const mat of Array.isArray(o.material)?o.material:[o.material])if((mat?.isMeshStandardMaterial||mat?.isMeshPhysicalMaterial||mat?.isMeshStandardNodeMaterial||mat?.isMeshPhysicalNodeMaterial)&&mat.lightsNode!==this.lightsNode){mat.lightsNode=this.lightsNode;mat.needsUpdate=true;}});}
+ flash(pos,color,power,range,life=.35,slot){if(!this.enabled)return;const i=slot??(8+(this.cursor++-8)%24),e=this.entries[i];e.pos.copy(pos);e.color.set(color);e.power=power;e.range=range;e.life=e.max=life;}
+ clear(){if(!this.enabled)return;for(const e of this.entries)e.life=0;}
  update(camera,dt){
+  if(!this.enabled)return;
   this.clock+=dt;camera.updateMatrixWorld();this.view.value.copy(camera.matrixWorldInverse);const t=Math.tan(T.MathUtils.degToRad(camera.fov)*.5);this.proj.value.set(t*camera.aspect,t);
   for(let i=0;i<32;i++){const e=this.entries[i];e.life=Math.max(0,e.life-dt);const k=e.life/e.max;this.positions.array[i].set(e.pos.x,e.pos.y,e.pos.z,e.life>0?e.range:0);this.colors.array[i].set(e.color.r*e.power*k,e.color.g*e.power*k,e.color.b*e.power*k,0);}
   this.renderer.compute(this.compute);
  }
- get active(){return this.entries.filter(e=>e.life>0).length;}
+ get active(){if(!this.enabled)return 0;return this.entries.filter(e=>e.life>0).length;}
 }
+

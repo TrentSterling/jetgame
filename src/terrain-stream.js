@@ -1,15 +1,16 @@
+import {QUALITY} from './quality.js';
 import {height} from './terrain.js';
 import {regionAt} from './regions.js';
 import * as T from 'three/webgpu';
 import {TerrainDecoration} from './terrain-decoration.js';
-export const TILE=256,RADIUS=4;
+export const TILE=256,RADIUS=QUALITY.terrainRadius;
 export function tilePlan(x,z){const cx=Math.floor(x/TILE),cz=Math.floor(z/TILE),out=[];for(let j=-RADIUS;j<=RADIUS;j++)for(let i=-RADIUS;i<=RADIUS;i++)out.push({key:`${cx+i},${cz+j}`,x0:(cx+i)*TILE,z0:(cz+j)*TILE,d:i*i+j*j});return out.sort((a,b)=>a.d-b.d);}
 export class TerrainStream{
  constructor(group,material){
   this.group=group;this.material=material;this.rockGeo=new T.IcosahedronGeometry(1,1);this.bushGeo=new T.IcosahedronGeometry(1,0);this.rockMat=new T.MeshStandardMaterial({color:'#88664a',roughness:.95});this.bushMat=new T.MeshStandardMaterial({color:'#6e7350',roughness:1});this.dummy=new T.Object3D();this.tiles=new Map();this.pending=new Set();this.queue=[];this.wanted=new Set();this.generated=0;this.disposed=0;this.error=null;this.center='';
   this.pool=[];this.completed=[];this.allocated=0;this.reused=0;this.maxCommitMs=0;this.booting=true;this.scheduled=false;
   this.ready=new Promise((resolve,reject)=>{this.resolve=()=>{this.booting=false;resolve();};this.reject=reject;});
-  this.workers=Array.from({length:4},()=>{const worker=new Worker(new URL('./terrain.worker.js',import.meta.url),{type:'module'}),slot={worker,busy:null};worker.onmessage=e=>this.receive(slot,e.data);worker.onerror=e=>{this.error=e.message;this.reject(new Error('Terrain worker: '+e.message));};return slot;});
+  this.workers=Array.from({length:QUALITY.terrainWorkers},()=>{const worker=new Worker(new URL('./terrain.worker.js',import.meta.url),{type:'module'}),slot={worker,busy:null};worker.onmessage=e=>this.receive(slot,e.data);worker.onerror=e=>{this.error=e.message;this.reject(new Error('Terrain worker: '+e.message));};return slot;});
   this.update(0,70);
  }
  update(x,z){
@@ -20,7 +21,7 @@ export class TerrainStream{
   const completed=new Set(this.completed.map(t=>t.job.key));
   this.queue=plan.filter(t=>!this.tiles.has(t.key)&&!this.pending.has(t.key)&&!completed.has(t.key));this.pump();
  }
- pump(){for(const slot of this.workers){if(slot.busy||!this.queue.length)continue;const job=this.queue.shift();slot.busy=job;this.pending.add(job.key);slot.worker.postMessage({...job,size:TILE,segments:128});}}
+ pump(){for(const slot of this.workers){if(slot.busy||!this.queue.length)continue;const job=this.queue.shift();slot.busy=job;this.pending.add(job.key);slot.worker.postMessage({...job,size:TILE,segments:QUALITY.terrainSegments});}}
  receive(slot,data){
   const job=slot.busy;slot.busy=null;this.pending.delete(job.key);
   if(this.wanted.has(job.key))this.completed.push({job,data});
@@ -38,12 +39,13 @@ export class TerrainStream{
   if(mesh){for(const [key,array] of [['position',data.positions],['normal',data.normals],['color',data.colors]]){const a=mesh.geometry.getAttribute(key);a.array.set(array);a.needsUpdate=true;}this.reused++;}
   else{
    const geometry=new T.BufferGeometry();for(const [key,array] of [['position',data.positions],['normal',data.normals],['color',data.colors]])geometry.setAttribute(key,new T.BufferAttribute(array,3));geometry.setIndex(new T.BufferAttribute(data.indices,1));mesh=new T.Mesh(geometry,this.material);mesh.receiveShadow=true;
-   for(const [geometry,material,count,bush] of [[this.rockGeo,this.rockMat,18,false],[this.bushGeo,this.bushMat,32,true]]){const decoration=new TerrainDecoration(geometry,material,count);decoration.name=bush?'Terrain shrubs':'Terrain rocks';decoration.receiveShadow=true;decoration.castShadow=!bush;mesh.add(decoration);}
+   for(const [geometry,material,count,bush] of (QUALITY.decorations?[[this.rockGeo,this.rockMat,18,false],[this.bushGeo,this.bushMat,32,true]]:[])){const decoration=new TerrainDecoration(geometry,material,count);decoration.name=bush?'Terrain shrubs':'Terrain rocks';decoration.receiveShadow=true;decoration.castShadow=!bush;mesh.add(decoration);}
    this.onAdd?.(mesh);this.group.add(mesh);this.allocated++;
   }
   mesh.geometry.computeBoundingSphere();mesh.name='Terrain '+job.key;this.decorate(mesh,job);mesh.visible=true;this.tiles.set(job.key,mesh);this.generated++;this.maxCommitMs=Math.max(this.maxCommitMs,performance.now()-start);
  }
  decorate(tile,job){
+  if(!QUALITY.decorations)return;
   let seed=((job.x0*17)^(job.z0*83)^0x12345678)>>>0;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
   for(const [index,count,bush] of [[0,18,false],[1,32,true]]){
    const mesh=tile.children[index];mesh.begin();let used=0;
@@ -52,5 +54,6 @@ export class TerrainStream{
   }
  }
  async settled(){const until=performance.now()+30000;while(this.queue.length||this.pending.size||this.completed.length){if(this.error)throw Error(this.error);if(performance.now()>until)throw Error('Terrain streaming timed out');await new Promise(r=>setTimeout(r,20));}return this.report();}
- report(){return {center:this.center,resident:this.tiles.size,queued:this.queue.length,inFlight:this.pending.size,pendingUploads:this.completed.length,generated:this.generated,disposed:this.disposed,allocated:this.allocated,reused:this.reused,maxCommitMs:this.maxCommitMs,maxTiles:81,error:this.error};}
+ report(){return {center:this.center,resident:this.tiles.size,queued:this.queue.length,inFlight:this.pending.size,pendingUploads:this.completed.length,generated:this.generated,disposed:this.disposed,allocated:this.allocated,reused:this.reused,maxCommitMs:this.maxCommitMs,maxTiles:(RADIUS*2+1)**2,segments:QUALITY.terrainSegments,error:this.error};}
 }
+

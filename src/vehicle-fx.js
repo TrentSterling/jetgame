@@ -1,3 +1,4 @@
+import {QUALITY} from './quality.js';
 import * as T from 'three/webgpu';
 import {attribute} from 'three/tsl';
 import {height} from './nav.js';
@@ -7,8 +8,8 @@ import {initializeWreck,stepWreck} from './wreck-physics.js';
 export class VehicleEffects{
  constructor(scene,{ground=height,obstacles=[]}={}){
   this.ground=ground;this.obstacles=obstacles;
-  this.scene=scene;this.parts=[];this.clock=0;this.cursor=0;this.emitAt={car:0,jet:0};this.smokeCount=96;
-  const geo=new T.IcosahedronGeometry(1,1);this.alpha=new T.InstancedBufferAttribute(new Float32Array(this.smokeCount),1);geo.setAttribute('smokeAlpha',this.alpha);
+  this.scene=scene;this.parts=[];this.clock=0;this.cursor=0;this.emitAt={car:0,jet:0};this.smokeCount=Math.round(96*QUALITY.effectScale);
+  const geo=new T.IcosahedronGeometry(1,QUALITY.surfaceDetail?1:0);this.alpha=new T.InstancedBufferAttribute(new Float32Array(this.smokeCount),1);geo.setAttribute('smokeAlpha',this.alpha);
   const mat=new T.MeshBasicNodeMaterial({transparent:true,depthWrite:false});mat.opacityNode=attribute('smokeAlpha','float');
   this.smoke=new T.InstancedMesh(geo,mat,this.smokeCount);this.smoke.frustumCulled=false;this.smoke.renderOrder=3;this.smoke.instanceMatrix.setUsage(T.DynamicDrawUsage);scene.add(this.smoke);
   this.puffs=Array.from({length:this.smokeCount},()=>({life:0,pos:new T.Vector3(),vel:new T.Vector3(),size:1}));this.dummy=new T.Object3D();
@@ -44,3 +45,4 @@ export class VehicleEffects{
  }
  get activePuffs(){return this.puffs.filter(p=>p.life>0).length;}
 }
+

@@ -1,3 +1,4 @@
+import {QUALITY} from './quality.js';
 import {terrainWGSL} from './terrain.js';
 import * as T from 'three/webgpu';
 import {Fn,If,atomicStore,atomicAdd,atomicMin,instancedArray,storage,uint,instanceIndex,wgslFn,positionGeometry,cameraWorldMatrix,texture,uv,step,clamp,attribute} from 'three/tsl';
@@ -52,6 +53,7 @@ function splatMask(){const n=128,data=new Uint8Array(n*n*4);for(let y=0;y<n;y++)
  }const t=new T.DataTexture(data,n,n,T.RGBAFormat);t.magFilter=T.LinearFilter;t.minFilter=T.LinearFilter;t.needsUpdate=true;return t;}
 
 export function addGore(h,scene){
+ if(!QUALITY.gore)return {enabled:false,nodes:[]};
  const origins=instancedArray(GORE_LIMITS.emitters,'vec4'),velocities=instancedArray(GORE_LIMITS.emitters,'vec4');
  const indirect=new T.IndirectStorageBufferAttribute(new Uint32Array([96,0,0,0]),1);
  const args=storage(indirect,'uint',4).toAtomic();
@@ -91,6 +93,7 @@ export function addGore(h,scene){
  const p=h.blood.element(instanceIndex.mul(3)),s=h.state.toAttribute(),pool=bloodMaterial('#64030d');
  pool.positionNode=stainPosition({q:positionGeometry,p,s,v:h.blood.element(instanceIndex.mul(3).add(2)),t:h.time});pool.opacityNode=mask.mul(step(0,p.w)).mul(clamp(h.time.sub(p.w).mul(5),0,1)).mul(.88);
  const marks=new T.Mesh(stains,pool);marks.frustumCulled=false;marks.renderOrder=1;scene.add(marks);
- return {particles,marks,fragments,clear,compact,indirect};
+ return {enabled:true,nodes:[clear,compact],particles,marks,fragments,clear,compact,indirect};
 }
 function bloodMaterial(color){return new T.MeshBasicNodeMaterial({color,transparent:true,depthWrite:false,side:T.DoubleSide,forceSinglePass:true,alphaTest:.015});}
+

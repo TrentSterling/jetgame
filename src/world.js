@@ -1,3 +1,4 @@
+import {QUALITY} from './quality.js';
 import {TerrainStream} from './terrain-stream.js';
 import * as T from 'three/webgpu';
 import {mix,color,positionGeometry,positionWorld,clamp,normalWorldGeometry,wgslFn,texture,vec2,attribute} from 'three/tsl';
@@ -10,11 +11,11 @@ import {compositeStatic} from './composite.js';
 
 
 export function makeWorld(scene){
- scene.background=new T.Color('#afa18d');scene.fog=new T.FogExp2('#afa18d',.0016);
+ scene.background=new T.Color('#afa18d');scene.fog=new T.FogExp2('#afa18d',QUALITY.surfaceDetail?.0016:.006);
  scene.add(new T.HemisphereLight('#adc7e3','#584132',.65));
- const skyMat=new T.MeshBasicNodeMaterial({side:T.BackSide,depthWrite:false,fog:false});skyMat.colorNode=wgslFn(`fn desertSky(p:vec3f)->vec3f{let n=normalize(p);let sun=dot(n,normalize(vec3f(-120,75,-200)));return mix(vec3f(.58,.39,.21),vec3f(.11,.22,.34),smoothstep(0.0,.7,n.y))+vec3f(1.0,.52,.13)*pow(max(0.0,sun),36.0)*.3+vec3f(10.0,7.0,3.0)*smoothstep(.99978,.99994,sun);}`)(positionGeometry);const sky=new T.Mesh(new T.SphereGeometry(1800,32,16),skyMat);scene.add(sky);
- const envData=new Float32Array(256*128*4),sunDir=new T.Vector3(-120,75,-200).normalize();for(let y=0;y<128;y++)for(let x=0;x<256;x++){const phi=y/127*Math.PI,theta=x/255*Math.PI*2,n=new T.Vector3(-Math.sin(phi)*Math.cos(theta),Math.cos(phi),Math.sin(phi)*Math.sin(theta)),t=Math.max(0,n.y),base=new T.Color('#c6a074').lerp(new T.Color('#668fab'),Math.sqrt(t));if(n.y<0)base.set('#655140').multiplyScalar(.4);const glow=Math.pow(Math.max(0,n.dot(sunDir)),180)*3;base.add(new T.Color(1,.64,.3).multiplyScalar(glow));envData.set([base.r,base.g,base.b,1],(y*256+x)*4);}const env=new T.DataTexture(envData,256,128,T.RGBAFormat,T.FloatType);env.mapping=T.EquirectangularReflectionMapping;env.needsUpdate=true;scene.environment=env;scene.environmentIntensity=.85;
- const sun=new T.DirectionalLight('#ffdfab',3.7);sun.position.set(-120,75,-200);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-115;sun.shadow.camera.right=115;sun.shadow.camera.top=140;sun.shadow.camera.bottom=-110;sun.shadow.camera.far=700;sun.shadow.normalBias=.06;sun.shadow.bias=-.00015;scene.add(sun);
+ const skyMat=new T.MeshBasicNodeMaterial({side:T.BackSide,depthWrite:false,fog:false});skyMat.colorNode=wgslFn(`fn desertSky(p:vec3f)->vec3f{let n=normalize(p);let sun=dot(n,normalize(vec3f(-120,75,-200)));return mix(vec3f(.58,.39,.21),vec3f(.11,.22,.34),smoothstep(0.0,.7,n.y))+vec3f(1.0,.52,.13)*pow(max(0.0,sun),36.0)*.3+vec3f(10.0,7.0,3.0)*smoothstep(.99978,.99994,sun);}`)(positionGeometry);const sky=new T.Mesh(new T.SphereGeometry(QUALITY.far*.75,32,16),skyMat);scene.add(sky);
+ if(QUALITY.environment){const envData=new Float32Array(256*128*4),sunDir=new T.Vector3(-120,75,-200).normalize();for(let y=0;y<128;y++)for(let x=0;x<256;x++){const phi=y/127*Math.PI,theta=x/255*Math.PI*2,n=new T.Vector3(-Math.sin(phi)*Math.cos(theta),Math.cos(phi),Math.sin(phi)*Math.sin(theta)),t=Math.max(0,n.y),base=new T.Color('#c6a074').lerp(new T.Color('#668fab'),Math.sqrt(t));if(n.y<0)base.set('#655140').multiplyScalar(.4);const glow=Math.pow(Math.max(0,n.dot(sunDir)),180)*3;base.add(new T.Color(1,.64,.3).multiplyScalar(glow));envData.set([base.r,base.g,base.b,1],(y*256+x)*4);}const env=new T.DataTexture(envData,256,128,T.RGBAFormat,T.FloatType);env.mapping=T.EquirectangularReflectionMapping;env.needsUpdate=true;scene.environment=env;scene.environmentIntensity=.85;}
+ const sun=new T.DirectionalLight('#ffdfab',3.7);sun.position.set(-120,75,-200);sun.castShadow=QUALITY.shadows;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-115;sun.shadow.camera.right=115;sun.shadow.camera.top=140;sun.shadow.camera.bottom=-110;sun.shadow.camera.far=700;sun.shadow.normalBias=.06;sun.shadow.bias=-.00015;scene.add(sun);
  // Ground, gravel, asphalt and paint share one surface and one depth value.
  const maskCanvas=document.createElement('canvas');maskCanvas.width=maskCanvas.height=2048;const ctx=maskCanvas.getContext('2d');ctx.fillStyle='#000';ctx.fillRect(0,0,2048,2048);ctx.strokeStyle='#fff';ctx.lineWidth=18/768*2048;ctx.lineCap=ctx.lineJoin='round';ctx.beginPath();
  const track=new T.CatmullRomCurve3(trackPoints.map(([x,z])=>new T.Vector3(x,0,z)),true,'catmullrom',.35);
@@ -36,8 +37,8 @@ export function makeWorld(scene){
   return mix(c,vec3f(.53,.46,.24),max(max(line,taxi),select(0.0,1.0,ring)));
  }`);
  const groundMat=new T.MeshStandardNodeMaterial({roughness:.97});groundMat.colorNode=paint({p:positionWorld,n:normalWorldGeometry,base:sandBase(positionWorld,normalWorldGeometry),gravel:texture(mask,vec2(positionWorld.x.div(768).add(.5),positionWorld.z.div(768).add(.5))).r});
- terrainFinish(groundMat);const surfaces=addSurfaces(scene);
- const terrain=new T.Group();terrain.name='Terrain';terrain.userData={heightfieldResolution:128,workers:4};scene.add(terrain);
+ if(QUALITY.surfaceDetail)terrainFinish(groundMat);const surfaces=addSurfaces(scene);
+ const terrain=new T.Group();terrain.name='Terrain';terrain.userData={heightfieldResolution:QUALITY.terrainSegments,workers:QUALITY.terrainWorkers};scene.add(terrain);
  const stream=new TerrainStream(terrain,groundMat),ready=stream.ready;
  // Keep home detail separate from the moving sky, sun and streamed terrain.
  // Composition retains the original meshes for collision ray queries.
@@ -72,3 +73,4 @@ export function makeWorld(scene){
  scene.add(sun.target);
  return {solids,terrain,sun,ready,surfaces,stream,pad:null,update(pos){stream.update(pos.x,pos.z);sky.position.copy(pos);sun.position.set(pos.x-120,pos.y+100,pos.z-200);sun.target.position.copy(pos);}};
 }
+

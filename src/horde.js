@@ -1,3 +1,5 @@
+import {zombieLiteGeometry} from './zombie-lite.js';
+import {QUALITY} from './quality.js';
 import {regionsNear,encounterOffset} from './regions.js';
 import {spawnCrowdOffset} from './spawn-layout.js';
 import {isRegionalGuard,localCrowdOffset,localCrowdClearance} from './local-crowd.js';
@@ -57,17 +59,14 @@ export class Horde{
   this.viewProjection=uniform(new T.Matrix4());this.viewEnabled=uniform(0);
   this.blood=instancedArray(count*3,'vec4');
   Object.assign(this, createKernels(this));
-  const geo=zombieGeometry();geo.instanceCount=count;this.trianglesPerEnemy=(geo.index?.count||geo.getAttribute('position').count)/3;
+  const geo=QUALITY.liteCrowd?zombieLiteGeometry():zombieGeometry();geo.instanceCount=count;this.trianglesPerEnemy=(geo.index?.count||geo.getAttribute('position').count)/3;
   const p=this.pos.toAttribute(),s=this.state.toAttribute(),v=this.vel.toAttribute();
-  // Broad fabric palettes read through the crowd without more draws or instance data.
-  // Select the jacket atlas tile explicitly, so skin/eyes/wounds keep their colors.
-  const baseColor=attribute('color','vec3'),materialUV=attribute('uv','vec2');
-  const fabric=step(.25,materialUV.x).mul(step(materialUV.x,.5)).mul(step(materialUV.y,.5));
-  const wardrobe=s.y.mul(13.37).fract();
-  const clothTint=mix(mix(vec3(.42,.60,.74),vec3(.78,.43,.32),step(.33,wardrobe)),vec3(.58,.64,.42),step(.66,wardrobe));
-  const variedColor=baseColor.mul(mix(vec3(1),clothTint,fabric)).mul(texture(zombieTexture()).rgb);
-  const m=new T.MeshStandardNodeMaterial({roughness:.96});m.positionNode=bodyFn({q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time});m.normalNode=transformNormalToView(normalFn({n:normalLocal,q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time}));m.colorNode=mix(variedColor.mul(mix(vec3(.84,.89,.82),vec3(1.04,.98,.90),s.y)).mul(mix(vec3(1),mix(vec3(1.12,.76,.67),vec3(.72,.82,.93),step(1.5,s.w)),step(.5,s.w).mul(fabric))),vec3(1.7,1.6,1.3),step(this.time,s.z)).mul(mix(.32,1,step(.01,s.x)));
-  this.mesh=new T.Mesh(geo,m);this.mesh.frustumCulled=false;this.mesh.castShadow=true;this.mesh.receiveShadow=true;scene.add(this.mesh);
+  // Existing seed and vertex colors select worn fabric hues; no new instance buffers.
+  const baseColor=attribute('color','vec3'),fabric=step(.012,baseColor.x.sub(baseColor.y));
+  const clothTint=mix(mix(vec3(.63,.85,1.08),vec3(1.08,.64,.52),s.y.mul(3).clamp(0,1)),vec3(.75,.94,.66),s.y.sub(.5).mul(2).clamp(0,1));
+  const variedColor=baseColor.mul(mix(vec3(1),clothTint,fabric)).mul(QUALITY.liteCrowd?vec3(1):texture(zombieTexture()).rgb);
+  const m=QUALITY.liteCrowd?new T.MeshBasicNodeMaterial():new T.MeshStandardNodeMaterial({roughness:.96});m.positionNode=bodyFn({q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time});if(!QUALITY.liteCrowd)m.normalNode=transformNormalToView(normalFn({n:normalLocal,q:positionGeometry,part:attribute('part','float'),p,s,v,time:this.time}));m.colorNode=mix(variedColor.mul(mix(vec3(.57,.65,.53),vec3(1.1,.84,.53),s.y)).mul(mix(vec3(1),mix(vec3(1.55,.46,.22),vec3(.47,.66,.85),step(1.5,s.w)),step(.5,s.w))),vec3(1.7,1.6,1.3),step(this.time,s.z)).mul(mix(.32,1,step(.01,s.x)));
+  this.mesh=new T.Mesh(geo,m);this.mesh.frustumCulled=false;this.mesh.castShadow=QUALITY.shadows;this.mesh.receiveShadow=QUALITY.shadows;scene.add(this.mesh);
   this.reset();
   this.gore=addGore(this,scene);
  }
@@ -87,7 +86,7 @@ export class Horde{
  setPressureContext(context){this.pressure.setContext(context);}
  updateFlow(){this.fieldOrigin.value.set(this.field.origin.x,this.field.origin.z);this.flow.value.array.set(this.field.data);this.flow.value.needsUpdate=true;}
  updateView(camera){camera.updateMatrixWorld();this.viewProjection.value.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);this.viewEnabled.value=1;}
- step(dt,time,goal,shot,blast,car,carOld,tool,jet,jetOld,melee,meleeAim,blastType=3){const pressure=this.pressure.step(dt,time,this.stats,goal);this.pressureScan.value.set(pressure.cursor,pressure.scanCount,this.streaming.value>.5?pressure.budget:0,pressure.epoch);this.pressureRecruit.value=this.streaming.value>.5?pressure.recruitBudget:0;this.pressureOrigin.value.set(pressure.x,pressure.z);this.melee.value.copy(melee);this.meleeAim.value.copy(meleeAim);this.blastType.value=blastType;for(let i=0;i<6;i++)this.rays.array[i].copy(shot.rays[i]);this.dt.value=dt;this.time.value=time;this.goal.value.copy(goal);this.shot.value.copy(shot.origin);this.aim.value.copy(shot.aim);this.blast.value.copy(blast);this.car.value.copy(car);this.carOld.value.copy(carOld);this.tool.value=tool;this.jet.value.copy(jet);this.jetOld.value.copy(jetOld);this.renderer.compute([this.clear,this.snapshot,this.sim,this.gore.clear,this.gore.compact]);}
+ step(dt,time,goal,shot,blast,car,carOld,tool,jet,jetOld,melee,meleeAim,blastType=3){const pressure=this.pressure.step(dt,time,this.stats,goal);this.pressureScan.value.set(pressure.cursor,pressure.scanCount,this.streaming.value>.5?pressure.budget:0,pressure.epoch);this.pressureRecruit.value=this.streaming.value>.5?pressure.recruitBudget:0;this.pressureOrigin.value.set(pressure.x,pressure.z);this.melee.value.copy(melee);this.meleeAim.value.copy(meleeAim);this.blastType.value=blastType;for(let i=0;i<6;i++)this.rays.array[i].copy(shot.rays[i]);this.dt.value=dt;this.time.value=time;this.goal.value.copy(goal);this.shot.value.copy(shot.origin);this.aim.value.copy(shot.aim);this.blast.value.copy(blast);this.car.value.copy(car);this.carOld.value.copy(carOld);this.tool.value=tool;this.jet.value.copy(jet);this.jetOld.value.copy(jetOld);this.renderer.compute([this.clear,this.snapshot,this.sim,...this.gore.nodes]);}
  async readStats(){if(this.pending)return this.pending;const generation=this.generation;this.pending=(async()=>{try{const b=await this.renderer.getArrayBufferAsync(this.counters.value);if(generation!==this.generation)return this.stats;const c=new Uint32Array(b);this.stats={kills:c[0],hits:c[1],carKills:c[2],bombKills:c[3],carContacts:c[4],contactMs:c[5],scrap:c[6],skidKills:c[7],jetContacts:c[8],footContactMs:c[9],cabContactMs:c[10],meleeHits:c[11],missileKills:c[12],botGunKills:c[13],botRamKills:c[14],alive:c[CROWD_COUNTERS.alive],nearby:c[CROWD_COUNTERS.nearby],recycled:c[CROWD_COUNTERS.recycled]};return this.stats;}finally{this.pending=null;}})();return this.pending;}
  async sample(n=8){const p=new Float32Array(await this.renderer.getArrayBufferAsync(this.pos.value)),s=new Float32Array(await this.renderer.getArrayBufferAsync(this.state.value));return Array.from({length:n},(_,i)=>({x:p[i*4],y:p[i*4+1],z:p[i*4+2],hp:s[i*4]}));}
 }

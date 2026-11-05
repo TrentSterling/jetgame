@@ -1,3 +1,4 @@
+import {QUALITY} from './quality.js';
 import {BattlefieldAudio} from './audio.js';
 import * as T from 'three/webgpu';
 import {height} from './nav.js';
@@ -5,7 +6,7 @@ import {attribute} from 'three/tsl';
 
 // Repeated rocket volleys share five draws. No effect allocates geometry,
 // materials or scene objects after construction; saturated pools replace old FX.
-export const EFFECT_LIMITS=Object.freeze({tracers:256,fragments:256,clouds:112,rings:24,stains:40});
+export const EFFECT_LIMITS=Object.freeze({tracers:Math.round(256*QUALITY.effectScale),fragments:Math.round(256*QUALITY.effectScale),clouds:Math.round(112*QUALITY.effectScale),rings:Math.round(24*QUALITY.effectScale),stains:Math.round(40*QUALITY.effectScale)});
 const UP=new T.Vector3(0,1,0),TAU=Math.PI*2;
 const finitePoint=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z);
 
@@ -42,11 +43,11 @@ export class Effects{
   const material=new T.MeshBasicNodeMaterial({transparent:true,depthWrite:false});material.opacityNode=attribute('traceAlpha','float');this.tracers=new T.InstancedMesh(geometry,material,EFFECT_LIMITS.tracers);this.tracers.name='Combat tracers';this.tracers.frustumCulled=false;scene.add(this.tracers);
   for(let i=0;i<EFFECT_LIMITS.tracers;i++)this.tracers.setColorAt(i,new T.Color('#ffd087'));
   this.fragments=new EffectPool(scene,new T.IcosahedronGeometry(1,0),EFFECT_LIMITS.fragments,{name:'Impact fragments',lit:true});
-  this.clouds=new EffectPool(scene,new T.IcosahedronGeometry(1,1),EFFECT_LIMITS.clouds,{name:'Blast and motor clouds',alpha:true});
-  const ringGeometry=new T.RingGeometry(.83,1,40);ringGeometry.rotateX(-Math.PI/2);
+  this.clouds=new EffectPool(scene,new T.IcosahedronGeometry(1,QUALITY.surfaceDetail?1:0),EFFECT_LIMITS.clouds,{name:'Blast and motor clouds',alpha:true});
+  const ringGeometry=new T.RingGeometry(.83,1,QUALITY.surfaceDetail?40:16);ringGeometry.rotateX(-Math.PI/2);
   this.rings=new EffectPool(scene,ringGeometry,EFFECT_LIMITS.rings,{name:'Blast pressure fronts',alpha:true});
   // Terrain-conforming scorch discs share one dynamic geometry and one draw.
-  this.stainSegments=24;this.stainCursor=0;this.stainCount=0;
+  this.stainSegments=QUALITY.surfaceDetail?24:12;this.stainCursor=0;this.stainCount=0;
   const vertices=(this.stainSegments+1)*EFFECT_LIMITS.stains;
   const positions=new Float32Array(vertices*3),indices=[];
   for(let k=0;k<EFFECT_LIMITS.stains;k++){const base=k*(this.stainSegments+1);for(let i=0;i<this.stainSegments;i++)indices.push(base,base+1+(i+1)%this.stainSegments,base+i+1);}
@@ -123,14 +124,14 @@ export class Effects{
   const floor=this.ground(p.x,p.z),nearGround=p.y-floor<radius*.75;
   this.cloud(p,.3,radius*.32,.13,'#fff4d0',.95);
   this.cloud(p,.5,radius*.38,.31,'#f08c32',.72);
-  for(let i=0;i<5;i++){
+  for(let i=0;i<Math.ceil(5*QUALITY.effectScale);i++){
    const a=i*TAU/5+this.random()*.4;this.endpoint.copy(p);this.endpoint.y=Math.max(p.y,floor+.35);
    this.direction.set(Math.cos(a)*radius*.32,1.5+this.random()*2,Math.sin(a)*radius*.32);
    this.cloud(this.endpoint,.32,radius*.19,.8+this.random()*.35,i%2?'#85735a':'#4c4b43',.34,this.direction);
   }
   const r=this.rings.spawn(p,.4,'#c3ab84');r.pos.y=nearGround?floor+.085:p.y;r.size=.45;r.growth=radius*1.25;r.opacity=.28;
   this.rings.write(r,r.size,r.opacity);this.rings.flush(1);
-  for(let i=0;i<20;i++){
+  for(let i=0;i<Math.ceil(20*QUALITY.effectScale);i++){
    const a=this.random()*TAU,speed=6+this.random()*Math.min(24,radius*1.8);
    this.direction.set(Math.cos(a)*speed,4+this.random()*14,Math.sin(a)*speed);
    this.fragment(p,this.direction,.07+this.random()*.23,1.4+this.random()*1.1,i%4===0?'#aa7850':'#5f5948');
@@ -176,3 +177,4 @@ export class Effects{
  report(){return {explosions:this.explosions,surfaceHits:this.surfaceHits,weaponEvents:this.weaponEvents,tracers:this.traces.filter(t=>t.life>0).length,fragments:this.fragments.active,clouds:this.clouds.active,rings:this.rings.active,stains:this.stainCount,limits:EFFECT_LIMITS,draws:5};}
  dispose(){this.clear();for(const pool of [this.fragments,this.clouds,this.rings])pool.dispose(this.scene);for(const mesh of [this.tracers,this.scorches]){this.scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}}
 }
+

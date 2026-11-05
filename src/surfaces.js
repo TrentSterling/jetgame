@@ -1,3 +1,4 @@
+import {QUALITY} from './quality.js';
 import * as T from 'three/webgpu';
 import {wgslFn,positionWorld,normalWorldGeometry,transformNormalToView,cameraViewMatrix,attribute,uniform,mix,vec3,vec4,cameraPosition,fog,color,smoothstep,max,dFdx,dFdy} from 'three/tsl';
 import {height} from './terrain.js';
@@ -62,6 +63,7 @@ export function addSurfaces(scene){
  // Directional normal waves only: no displacement, reflection pass or simulation.
  // TSL keeps this small material graph shared by WebGPU and isolated WebGL QA.
  const waterFinish=(m,puddle)=>{
+  if(!QUALITY.surfaceDetail){m.colorNode=color(puddle?'#526052':'#395c61');m.opacityNode=smoothstep(0,.08,attribute('waterDepth','float')).mul(.8);return;}
   const depth=attribute('waterDepth','float').max(0),p=positionWorld;
   const swell=p.x.mul(.46).add(p.z.mul(.17)).sub(clock.mul(.52));
   const crossing=p.x.mul(.29).sub(p.z.mul(.41)).sub(clock.mul(.38)).add(1.7);
@@ -88,10 +90,10 @@ export function addSurfaces(scene){
  };
  const build=(cx,cz,rx,rz,level,puddle=false)=>{
   // A subdivided grid gives shoreline depth per vertex and stable silhouettes.
-  const grid=new T.PlaneGeometry(rx*2,rz*2,128,128);grid.rotateX(-Math.PI/2);grid.translate(cx,level,cz);const p=grid.attributes.position,depth=new Float32Array(p.count);
+  const grid=new T.PlaneGeometry(rx*2,rz*2,QUALITY.surfaceDetail?128:32,QUALITY.surfaceDetail?128:32);grid.rotateX(-Math.PI/2);grid.translate(cx,level,cz);const p=grid.attributes.position,depth=new Float32Array(p.count);
   for(let i=0;i<p.count;i++){const x=p.getX(i),z=p.getZ(i),oval=1-((x-cx)/rx)**2-((z-cz)/rz)**2;depth[i]=Math.max(0,Math.min(level-height(x,z),oval*2));}
   grid.setAttribute('waterDepth',new T.BufferAttribute(depth,1));
-  const m=new T.MeshPhysicalNodeMaterial({roughness:.19,metalness:0,ior:1.333,transparent:true,depthWrite:false,side:T.DoubleSide});
+  const m=QUALITY.surfaceDetail?new T.MeshPhysicalNodeMaterial({roughness:.19,metalness:0,ior:1.333,transparent:true,depthWrite:false,side:T.DoubleSide}):new T.MeshBasicNodeMaterial({transparent:true,depthWrite:false,side:T.DoubleSide});
   waterFinish(m,puddle);m.alphaTest=.025;
   const water=new T.Mesh(grid,m);water.name='Water';water.renderOrder=3;water.receiveShadow=true;scene.add(water);waters.push(water);
  };
@@ -102,6 +104,7 @@ export function addSurfaces(scene){
  let sun=pow(max(0.0,dot(normalize(p-c),normalize(vec3f(-120,75,-200)))),12.0);
  return vec4f(mix(vec3f(.26,.31,.35),vec3f(.64,.40,.18),sun),clamp(1.0-exp(-d*density),0.0,.93));
 }`);
- const mist=haze({p:positionWorld,c:cameraPosition});scene.fog=null;scene.fogNode=fog(mist.xyz,mist.w);
+ if(QUALITY.surfaceDetail){const mist=haze({p:positionWorld,c:cameraPosition});scene.fog=null;scene.fogNode=fog(mist.xyz,mist.w);}
  return {clock,waters,update:t=>clock.value=t};
 }
+
