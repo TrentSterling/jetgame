@@ -5,7 +5,7 @@ const blend=(a,b,k,dt)=>a+(b-a)*(1-Math.exp(-k*dt));
 // up; it cannot pull a ballistic trajectory down across a crest. The band
 // absorbs ordinary seams, while the positive acceleration limit prevents a
 // tiny height step from becoming an artificial upward launch impulse.
-export const DRIVING_CONTACT=Object.freeze({gravity:20,releaseClearance:.045,maxSupportAcceleration:80});
+export const DRIVING_CONTACT=Object.freeze({gravity:20,releaseClearance:.045,maxSupportAcceleration:80,maxLaunchGrade:.5});
 // Arcade forces with finite tire grip. A vehicle can point across its travel
 // direction; steering cannot rotate its velocity or cancel a slide instantly.
 const handling={
@@ -104,8 +104,12 @@ function driveStep(car,dt,input,ground,boxes){
   if(!car._contactPrimed||!Number.isFinite(car._contactY)||!Number.isFinite(car._contactVy)){
    car._contactY=oldY;car._contactVy=grade*travel/dt;car._contactAge=0;car._contactPrimed=true;
   }
-  const freeY=car._contactY+car._contactVy*dt-.5*DRIVING_CONTACT.gravity*dt*dt;
-  const freeVy=car._contactVy-DRIVING_CONTACT.gravity*dt;
+  // Surface following measures vertical rise, but steep powered climbs must not
+  // bank that entire rise into a launch impulse. Bound only the unsupported
+  // prediction; ordinary ramps/rounded crests and existing airborne velocity stay intact.
+  const supportVy=Math.min(car._contactVy,Math.hypot(car.vx,car.vz)*DRIVING_CONTACT.maxLaunchGrade);
+  const freeY=car._contactY+supportVy*dt-.5*DRIVING_CONTACT.gravity*dt*dt;
+  const freeVy=supportVy-DRIVING_CONTACT.gravity*dt;
   if(freeY>newFloor+DRIVING_CONTACT.releaseClearance){
    car.pos.y=freeY;car.vy=freeVy;car.airTime=car._contactAge+dt;car.grounded=false;
   }else{
