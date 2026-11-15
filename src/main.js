@@ -351,7 +351,7 @@ function updateAimAssist(){
  aimOrigin.copy(car.pos);aimOrigin.y+=1.95;aimDirection.copy(carWeaponDirection(car));
  carAim=combatTargets.aim(aimOrigin,aimDirection,{preferredId:carAim?.id,maxDistance:150,coneDegrees:10});
 }
-function shoot(){if(time+1e-6<shotAt||reload>0||dead)return false;if(mode==='foot'&&ammo<=0){reload=1.35;return false;}
+function shoot(){if(time+1e-6<shotAt||(mode==='foot'&&reload>0)||dead)return false;if(mode==='foot'&&ammo<=0){reload=1.35;return false;}
  camera.getWorldDirection(forward);let origin=camera.position.clone(),dir=forward.clone(),range=180,damage=upgrades.rifleDamage;
  if(mode==='jet'){origin=plane.pos.clone().addScaledVector(flightDirection(),4);dir=flightDirection();range=320;damage=95;}
  if(mode==='car'){origin=car.pos.clone().add(new T.Vector3(0,1.95,0));dir.copy(carAim?.direction||carWeaponDirection(car));damage=95;}
