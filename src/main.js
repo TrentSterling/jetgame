@@ -613,7 +613,7 @@ async function init(){try{
  await startup.phase('Lighting the battlefield',async()=>{lighting=new CombatLighting(scene,renderer);await lighting.init();fleet.onAdd=expeditions.onAdd=world.stream.onAdd=root=>lighting.attach(root);lighting.update(camera,0);fx.onExplosion=(p,r)=>{lighting.flash(p,'#ff8835',r*130,r*3,.8);if(running&&!paused){const distance=currentBody().pos.distanceTo(p);if(distance<r*5)shakes=Math.max(shakes,Math.min(mode==='jet'?.1:.22,r*.022/(1+distance*.12)));}};},true,{detail:'Preparing sunlight, shadows and light from explosions.'});
  await startup.phase('Mapping crowd routes',()=>renderer.compute(horde.clear),true,{detail:'Preparing shared routes for the horde to follow.'});
  await startup.phase('Placing the crowd',()=>renderer.compute(horde.snapshot),true,{detail:'Uploading zombie positions to the battlefield.'});
- await startup.phase('Preparing combat',()=>renderer.compute(horde.sim),true,{detail:'Setting up enemy movement, contact and damage.'});
+ await startup.phase('Preparing combat',async()=>{await renderer.prepareComputeAsync(horde.sim);if(startup.state.failed)throw new Error(window.bootError||'Startup failed.');renderer.compute(horde.sim);},true,{detail:'Setting up enemy movement, contact and damage.'});
  await startup.phase('Preparing impact effects',()=>{if(horde.gore.nodes.length)renderer.compute(horde.gore.nodes);},true,{detail:'Preparing blood, debris and enemy death effects.'});
  await startup.phase('Warming weapons and effects',async()=>{
    // Exercise the real effect material variants before the first shot/bomb.

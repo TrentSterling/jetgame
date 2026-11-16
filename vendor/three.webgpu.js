@@ -1,3 +1,4 @@
+import { prepareCompute, assertComputePrepared, cancelComputePreparations } from './compute-preparation.js';
 /**
  * @license
  * Copyright 2010-2026 Three.js Authors
@@ -32220,7 +32221,7 @@ class Pipelines extends DataMap {
 	 * @param {Array<BindGroup>} bindings - The bindings.
 	 * @return {ComputePipeline} The compute pipeline.
 	 */
-	getForCompute( computeNode, bindings ) {
+	getForCompute( computeNode, bindings, preparation = null ) {
 
 		const { backend } = this;
 
@@ -32267,7 +32268,7 @@ class Pipelines extends DataMap {
 
 				if ( previousPipeline && previousPipeline.usedTimes === 0 ) this._releasePipeline( previousPipeline );
 
-				pipeline = this._getComputePipeline( computeNode, stageCompute, cacheKey, bindings );
+				pipeline = this._getComputePipeline( computeNode, stageCompute, cacheKey, bindings, preparation );
 
 			}
 
@@ -32481,7 +32482,7 @@ class Pipelines extends DataMap {
 	 * @param {Array<BindGroup>} bindings - The bindings.
 	 * @return {ComputePipeline} The compute pipeline.
 	 */
-	_getComputePipeline( computeNode, stageCompute, cacheKey, bindings ) {
+	_getComputePipeline( computeNode, stageCompute, cacheKey, bindings, preparation = null ) {
 
 		// check for existing pipeline
 
@@ -32495,7 +32496,7 @@ class Pipelines extends DataMap {
 
 			this.caches.set( cacheKey, pipeline );
 
-			this.backend.createComputePipeline( pipeline, bindings );
+			this.backend.createComputePipeline( pipeline, bindings, preparation );
 
 		}
 
@@ -61720,6 +61721,7 @@ class Renderer {
 
 		if ( this._initialized === true ) {
 
+			cancelComputePreparations( this );
 			this.info.dispose();
 			this.backend.dispose();
 
@@ -61903,6 +61905,8 @@ class Renderer {
 	 */
 	compute( computeNodes, dispatchSize = null ) {
 
+		assertComputePrepared( this );
+
 		if ( this._isDeviceLost === true ) return;
 
 		if ( this._initialized === false ) {
@@ -62013,6 +62017,13 @@ class Renderer {
 	 * - A IndirectStorageBufferAttribute for indirect dispatch size.
 	 * @return {Promise} A Promise that resolve when the compute has finished.
 	 */
+	// Prepare one unused compute node without submitting it. Cold startup only.
+	prepareComputeAsync( computeNode ) {
+
+		return prepareCompute( this, computeNode );
+
+	}
+
 	async computeAsync( computeNodes, dispatchSize = null ) {
 
 		if ( this._initialized === false ) await this.init();
@@ -82636,7 +82647,7 @@ class WebGPUPipelineUtils {
 	 * @param {ComputePipeline} pipeline - The compute pipeline.
 	 * @param {Array<BindGroup>} bindings - The bindings.
 	 */
-	createComputePipeline( pipeline, bindings ) {
+	createComputePipeline( pipeline, bindings, preparation = null ) {
 
 		const backend = this.backend;
 		const device = backend.device;
@@ -82660,6 +82671,27 @@ class WebGPUPipelineUtils {
 
 		const computeStage = pipeline.computeProgram;
 		const pipelineLabel = `computePipeline_${ computeStage.stage }${ computeStage.name ? `_${ computeStage.name }` : '' }`;
+
+		if ( preparation !== null ) {
+
+			// A fresh descriptor is owned by this promise, never the shared scratch
+			// descriptor used by the synchronous path below. No dispatch occurs.
+			const descriptor = {
+				label: pipelineLabel,
+				compute: { ...computeProgram },
+				layout: device.createPipelineLayout( { bindGroupLayouts } )
+			};
+			if ( computeProgram.constants ) descriptor.compute.constants = { ...computeProgram.constants };
+			preparation.promises.push( Promise.resolve().then( () => {
+				if ( ! preparation.isCurrent() ) throw new Error( 'Compute preparation was cancelled.' );
+				return device.createComputePipelineAsync( descriptor );
+			} ).then( result => {
+				if ( ! preparation.isCurrent() ) throw new Error( 'Compute preparation was cancelled.' );
+				pipelineGPU.pipeline = result;
+			} ) );
+			return;
+
+		}
 
 		device.pushErrorScope( 'validation' );
 
@@ -86062,9 +86094,9 @@ class WebGPUBackend extends Backend {
 	 * @param {ComputePipeline} computePipeline - The compute pipeline.
 	 * @param {Array<BindGroup>} bindings - The bindings.
 	 */
-	createComputePipeline( computePipeline, bindings ) {
+	createComputePipeline( computePipeline, bindings, preparation = null ) {
 
-		this.pipelineUtils.createComputePipeline( computePipeline, bindings );
+		this.pipelineUtils.createComputePipeline( computePipeline, bindings, preparation );
 
 	}
 
