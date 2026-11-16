@@ -97,7 +97,7 @@ export class WastelandChaos{
   for(const kit of VEHICLE_KITS)this.groups[kit.id].visible=allowEquipment&&kitEnabled(u,kit.id);
   if(this.lastBody!==car){this.lastBody=car;this.lastHealth=car.health;this.lastHurt=time;}
   if(car.health<this.lastHealth||injured)this.lastHurt=time;this.lastHealth=car.health;
-  const party=expeditions.party,aboard=!dead&&mode==='car'&&party?.vehicle===car.fleetId&&party.count>0;
+  const party=expeditions.party,aboard=!dead&&mode==='car'&&party!=null&&typeof party.vehicle==='string'&&party.vehicle===car.fleetId&&party.count>0;
   this.crew.visible=!!aboard;let firing=false;
   if(!dead&&mode==='car'&&allowEquipment&&fire&&kitEnabled(u,'scatter')&&time>=this.scatterAt){
    this.scatterAt=time+.42;
