@@ -19,7 +19,7 @@ export function missionHUD(expeditions,pos,mode,{groundHeight=0,vehicleId=null}=
  }
  const site=expeditions.sites.get(destination.id);
  if(!site||destination.distance>120){
-  if(destination.seats>0)result.action='Needs '+destination.seats+' passenger seat'+(destination.seats===1?'':'s');
+  if(destination.distance>120&&destination.seats>0)result.missionDetail=destination.seats+(destination.seats===1?' SEAT':' SEATS')+' · '+distanceText(destination.distance)+' · '+destination.name;
   return result;
  }
  const rules=missionRules(site),state=site.state;
