@@ -22,7 +22,10 @@ export function regionAt(cx,cz){
  const x=cx*900+Math.sin(cx*7+cz*13)*110,z=cz*900+Math.sin(cx*17-cz*5)*110;
  const kind=regionKinds[((cx*7+cz*11)%4+4)%4];
  const names={relay:'Ridge relay',quarry:'Redstone quarry',settlement:'Lost settlement',depot:'Convoy depot'};
- return {id:`${cx},${cz}`,cx,cz,x,z,kind,name:`${names[kind]} ${cx}:${cz}`};
+ // Variants retain stable addresses, mission kinds and save contracts.
+ const variant=Math.abs(cx*3+cz)%3!==0?(kind==='depot'?'wreckers':kind==='relay'?'stormvault':null):null;
+ const landmark=variant==='wreckers'?"Wreckers' Yard":variant==='stormvault'?'Stormvault Relay':names[kind];
+ return {id:`${cx},${cz}`,cx,cz,x,z,kind,variant,name:`${landmark} ${cx}:${cz}`};
 }
 export function regionsNear(x,z,radius=1){const cx=Math.round(x/900),cz=Math.round(z/900),out=[];for(let dz=-radius;dz<=radius;dz++)for(let dx=-radius;dx<=radius;dx++)out.push(regionAt(cx+dx,cz+dz));return out;}
 // Counts belong to an offer when it is first generated. Saved missions retain

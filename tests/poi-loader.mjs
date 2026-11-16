@@ -1,0 +1,1 @@
+export async function resolve(specifier,context,next){if(specifier==='three/webgpu')return {url:new URL('../vendor/three.webgpu.js',import.meta.url).href,shortCircuit:true};return next(specifier,context);}

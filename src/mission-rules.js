@@ -7,7 +7,8 @@ export const MISSION_RULES=Object.freeze({
  depot:{name:'Supply convoy',repair:3,pickup:1.2,radius:42},
 });
 export const SUPPLY_POINTS=Object.freeze([{x:-9,z:12},{x:19,z:8}]);
-export const missionRules=site=>MISSION_RULES[site.kind]||MISSION_RULES.settlement;
+const VARIANT_RULES=Object.freeze({wreckers:{...MISSION_RULES.depot,name:'Salvage crew extraction'},stormvault:{...MISSION_RULES.relay,name:'Stormvault uplink'}});
+export const missionRules=site=>VARIANT_RULES[site.variant]||MISSION_RULES[site.kind]||MISSION_RULES.settlement;
 export const supplyCount=mask=>Number(!!(mask&1))+Number(!!(mask&2));
 export function missionDefaults(site,state){
  const ready=!!site.ready;

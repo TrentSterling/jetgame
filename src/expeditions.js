@@ -48,6 +48,22 @@ export class Expeditions{
    // Refuge stays on the open apron, clear of the original starting vehicles.
    group.position.set(12,0,70);site.x=12;site.z=70;
    for(const s of [-1,1])segment(group,[s*3,0,0],[s*3,3.4,0],.1,steel);box(group,[7,.18,4],[0,3.4,0],paint);
+  }else if(spec.variant==='wreckers'){
+   // Broad open apron: crates/radio/boarding remain clear, wreck stacks are solid.
+   building(-24,-9,13,16,4,stone);building(24,-17,12,14,5,roof);
+   for(const x of [-24,24]){const z=x<0?-9:-17,y=x<0?4:5;box(group,[10,1.2,4],[x,y+.6,z],steel);box(group,[4,1.4,3],[x,y+1.9,z],paint);}
+   // A salvage gantry silhouette, entirely over the solid workshop footprint.
+   segment(group,[-29,4,-9],[-29,16,-9],.35,steel);segment(group,[-19,4,-9],[-19,16,-9],.35,steel);
+   box(group,[12,.7,1],[-24,16,-9],paint);segment(group,[-24,16,-9],[-24,7,-9],.08,steel);
+   for(let i=0;i<4;i++)box(group,[2,.16,1],[-7+i*4,.12,22],paint);
+  }else if(spec.variant==='stormvault'){
+   // Side bunker leaves the existing central defense ring and terminal accessible.
+   building(-22,-10,18,20,5,stone);box(group,[12,2,14],[-22,6,-10],roof);
+   for(const x of [-28,-16])segment(group,[x,7,-10],[-22,29,-10],.24,steel);
+   for(let y=12;y<29;y+=5)box(group,[8,.2,.3],[-22,y,-10],paint);
+   cylinder(group,2.7,2.7,.5,[-22,29,-10],paint,10);
+   // Low warning stripes guide arrivals to the terminal, not a fake bunker door.
+   for(let i=0;i<5;i++)box(group,[.5,.08,2.5],[-5+i*2.5,.08,9],paint);
   }else if(spec.kind==='relay'){
    building(-18,0,10,9,4);for(const s of [-1,1])for(const q of [-1,1])segment(group,[s*3,0,q*3],[s*.5,34,q*.5],.2,steel);
    for(let y=4;y<32;y+=5){segment(group,[-2,y,-2],[2,y+4,2],.12,steel);segment(group,[2,y,-2],[-2,y+4,2],.12,steel);}
@@ -164,7 +180,7 @@ export class Expeditions{
   const taskPos={x:site.x+offset.x,z:site.z+offset.z},taskDistance=Math.hypot(pos.x-taskPos.x,pos.z-taskPos.z);
   const stage=needsKit?'kit':supplies?'supply-'+supplyIndex:site.kind==='quarry'?'triage':'radio',duration=needsKit||supplies?rules.pickup:rules.repair;
   const defending=site.kind==='settlement'&&site.state.alarmed&&!site.ready;
-  this.target={id:site.id,name:site.name,x:site.ready||defending?site.x:taskPos.x,z:site.ready||defending?site.z:taskPos.z,kind:'rescue',label:needsKit?'Medical supplies':supplies?'Supply crate':site.kind==='relay'?'Relay':defending?'Defend shelter':'Survivors',action:missionName(site),distance,count:site.count,seats:site.kind==='relay'?0:site.count};
+  this.target={id:site.id,name:site.name,x:site.ready||defending?site.x:taskPos.x,z:site.ready||defending?site.z:taskPos.z,kind:'rescue',label:needsKit?'Medical supplies':supplies?(site.variant==='wreckers'?'Salvage parts cache':'Supply crate'):site.kind==='relay'?'Relay':defending?'Defend shelter':'Survivors',action:missionName(site),distance,count:site.count,seats:site.kind==='relay'?0:site.count};
   const onFoot=mode==='foot'&&!dead&&pos.y-height(pos.x,pos.z)<3;
   if(defending){
    // The alarm draws a horde. The player can move, fire, shove and use vehicles
@@ -178,7 +194,7 @@ export class Expeditions{
    if(this.progress>=duration){
     this.progress=0;this.active=null;
     if(needsKit){site.state.kit=true;site.kit.visible=false;site.state.alarmed=true;this.onSignal?.('hit');this.onMessage('Medical supplies secured. Stabilize the team at the shelter.',4);}
-    else if(supplies){site.state.supplyMask|=1<<supplyIndex;site.state.alarmed=true;site.supplies[supplyIndex].visible=false;this.onSignal?.('hit');this.onMessage(supplyCount(site.state.supplyMask)===2?'Both supply caches secured. Radio the convoy at the shelter.':'Supplies secured. Collect the second cache before extraction.',4);}
+    else if(supplies){site.state.supplyMask|=1<<supplyIndex;site.state.alarmed=true;site.supplies[supplyIndex].visible=false;this.onSignal?.('hit');this.onMessage(site.variant==='wreckers'?(supplyCount(site.state.supplyMask)===2?'Parts secured. Radio the mechanics, then bring a five-seat carrier.':'Parts recovered. Reach the second marked salvage cache.'):(supplyCount(site.state.supplyMask)===2?'Both supply caches secured. Radio the convoy at the shelter.':'Supplies secured. Collect the second cache before extraction.'),4);}
     else if(site.kind==='settlement'){site.state.alarmed=true;site.state.defense=0;this.onMessage('Alarm raised. Hold the shelter while the team gets ready. You can fight from a vehicle.',5);}
     else{site.ready=true;site.state.alarmed=true;this.repaired.add(site.id);this.onMessage(site.kind==='relay'?'Uplink started. Defend the relay; you can move and fight inside the marked area.':site.kind==='depot'?'Convoy ready. Load the team and supplies into a stopped carrier.':'Survivors stabilized. They will run to a stopped carrier.',5);}
    }
@@ -202,13 +218,13 @@ export class Expeditions{
   const s=this.sites.get(this.target?.id);if(!s||this.party||this.target.distance>120)return '';
   const rules=missionRules(s);
   if(s.kind==='settlement'&&s.state.alarmed&&!s.ready)return `Defend shelter within ${rules.radius} m · ${Math.ceil(rules.hold-s.state.defense)}s · fight on foot or from a vehicle`;
-  if(s.ready&&s.kind==='relay')return `Defend relay on foot within ${rules.radius} m · ${Math.ceil((12-s.state.signal)/12*rules.hold)}s remaining`;
+  if(s.ready&&s.kind==='relay')return `Defend ${s.variant==='stormvault'?'Stormvault':'relay'} on foot within ${rules.radius} m · ${Math.ceil((12-s.state.signal)/12*rules.hold)}s remaining`;
   if(this.boarding?.id===s.id)return `Loading team · ${this.boarding.arrived}/${s.count} aboard · keep transport stopped`;
   if(s.ready)return mode==='foot'?`Team following · bring a ${s.count}-seat carrier nearby`:`Stop near the team · ${s.count} passenger seats required`;
   if(s.kind==='quarry'&&!s.state.kit)return `Medical crate · ${Math.round(Math.hypot(pos.x-s.x-10,pos.z-s.z-13))} m · hold F ${Math.floor(this.progress/rules.pickup*100)}%`;
-  if(s.kind==='depot'&&s.state.supplyMask!==3)return `Supply caches ${supplyCount(s.state.supplyMask)}/2 · reach the crate and hold F ${Math.floor(this.progress/rules.pickup*100)}%`;
+  if(s.kind==='depot'&&s.state.supplyMask!==3)return `${s.variant==='wreckers'?'Salvage parts':'Supply caches'} ${supplyCount(s.state.supplyMask)}/2 · reach the crate and hold F ${Math.floor(this.progress/rules.pickup*100)}%`;
   return mode==='foot'?`Hold F to ${s.kind==='quarry'?'stabilize team':s.kind==='settlement'?'start evacuation':'activate radio'} ${Math.floor(this.progress/rules.repair*100)}%`:'Exit and help the shelter';
  }
  reset(){this.done.clear();this.repaired.clear();this.visited.clear();this.refuges.length=1;this.party=null;this.rescued=this.deliveries=this.progress=this.relays=0;this.active=null;this.missions.clear();this.boarding=null;for(const s of this.sites.values()){s.ready=false;if(s.defenseRing)s.defenseRing.visible=false;this.setPeopleCount(s,s.kind==='home'?0:expeditionOffer(s).people);s.state=this.freshState(s);this.missions.set(s.id,s.state);for(const m of s.people){m.userData.path={};poseSurvivor(m,false,0);}this.syncPeople(s);}}
- report(){return {rescued:this.rescued,deliveries:this.deliveries,relays:this.relays,visited:this.visited.size,completed:[...this.done],party:this.party,boarding:this.boarding,progress:this.progress,target:this.target,sites:[...this.sites.values()].map(s=>({id:s.id,x:s.x,z:s.z,name:s.name,kind:s.kind,count:s.count,ready:!!s.ready,mission:missionName(s),kit:s.state.kit,signal:s.state.signal,alarmed:s.state.alarmed,defense:s.state.defense,supplies:supplyCount(s.state.supplyMask),people:s.state.people.map(p=>({...p}))})),refuges:this.refuges.length};}
+ report(){return {rescued:this.rescued,deliveries:this.deliveries,relays:this.relays,visited:this.visited.size,completed:[...this.done],party:this.party,boarding:this.boarding,progress:this.progress,target:this.target,sites:[...this.sites.values()].map(s=>({id:s.id,x:s.x,z:s.z,name:s.name,kind:s.kind,variant:s.variant||null,count:s.count,ready:!!s.ready,mission:missionName(s),kit:s.state.kit,signal:s.state.signal,alarmed:s.state.alarmed,defense:s.state.defense,supplies:supplyCount(s.state.supplyMask),people:s.state.people.map(p=>({...p}))})),refuges:this.refuges.length};}
 }

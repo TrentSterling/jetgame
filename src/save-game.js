@@ -1,3 +1,4 @@
+import {validArsenal} from './infantry-arsenal.js';
 // Versioned local checkpoints. Simulation buffers are copied on the same GPU
 // queue as the frame, then committed together in one IndexedDB transaction.
 import {regionAt,validExpeditionPeople} from './regions.js';
@@ -20,6 +21,7 @@ const finite=v=>typeof v==='number'&&Number.isFinite(v);
 const position=p=>Array.isArray(p)&&p.length===3&&p.every(finite);
 const bodyValid=b=>b&&position(b.pos)&&finite(b.health)&&b.health>=0&&b.health<=100&&finite(b.yaw)&&Object.entries(b).every(([k,v])=>k==='pos'||['boolean','string'].includes(typeof v)||(typeof v==='number'&&(Number.isFinite(v)||(k==='chuteDelay'&&v===Infinity))));
 export function validateCheckpoint(s,count){
+ if(!validArsenal(s?.runtime?.infantryArsenal))bad('infantry arsenal');
  if(!s||s.schema!==SAVE_SCHEMA||s.world!==WORLD_VERSION)bad('unsupported version');
  if(!finite(s.savedAt)||s.count!==count||!bodyValid(s.player))bad('player or population');
  if(!s.runtime||!modes.includes(s.runtime.mode)||!finite(s.runtime.time)||s.runtime.time<0||!position(s.runtime.deathPoint))bad('run state');

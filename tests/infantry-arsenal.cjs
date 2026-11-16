@@ -1,0 +1,11 @@
+const fs=require('fs'),assert=require('assert/strict');
+(async()=>{
+ const src=fs.readFileSync(__dirname+'/../src/infantry-arsenal.js','utf8'),{InfantryArsenal,validArsenal,breacherPellet}=await import('data:text/javascript;base64,'+Buffer.from(src).toString('base64'));
+ const a=new InfantryArsenal();assert(validArsenal(undefined));assert(!a.select('breacher'));assert(!a.beginReload());assert(a.reward());assert(!a.reward());assert(a.select('breacher'));for(let i=0;i<6;i++)assert(a.fire());assert.equal(a.shells,0);assert(!a.fire());assert.equal(a.reload,1.8);assert(!a.select('carbine'));a.tick(.9);assert(!a.beginReload());assert.equal(a.reload,.9);a.tick(.9);assert.equal(a.shells,6);assert.equal(a.reserve,12);
+ assert(a.select('carbine'));assert(!a.select('breacher',{mode:'car'}));assert(!a.select('breacher',{paused:true}));assert(!a.select('breacher',{dead:true}));assert(!a.select('breacher',{carbineReload:.4}));assert(a.select('breacher'));
+ for(let n=0;n<3;n++){for(let i=0;i<6;i++)assert(a.fire());a.beginReload();a.tick(2);}assert.equal(a.shells,0);assert.equal(a.reserve,0);assert(!a.fire());assert.equal(a.reload,0);assert(a.select('carbine'));
+ a.reward();a.select('breacher');a.fire();a.beginReload();a.tick(.4);const b=new InfantryArsenal();b.restore(a.snapshot());assert.deepEqual(b.snapshot(),a.snapshot());b.tick(2);assert.equal(b.shells,6);assert.equal(b.reserve,17);b.restore();assert(!b.unlocked);assert.equal(b.selected,'carbine');assert(!validArsenal({...a.snapshot(),reserve:Infinity}));assert(!validArsenal({...a.snapshot(),shells:7}));assert(!validArsenal({...a.snapshot(),unlocked:false}));
+ const p=Array.from({length:6},(_,i)=>breacherPellet(i));assert(Math.abs(p.reduce((v,p)=>v+p.x,0))<1e-10);assert(Math.abs(p.reduce((v,p)=>v+p.y,0))<1e-10);
+ const main=fs.readFileSync(__dirname+'/../src/main.js','utf8');for(const needle of ['arsenal.reward()','arsenal.restore(s.infantryArsenal)','infantryArsenal:arsenal.snapshot()',"pressed.has('Digit2')",'if(!scatter)ammo--','range=scatter?BREACHER.range:180'])assert(main.includes(needle),needle);
+ console.log('PASS earned unlock, finite shots/resupply, reload/non-reset, swap gating, old/new save, spread and integration contracts');
+})().catch(e=>{console.error(e);process.exitCode=1});
