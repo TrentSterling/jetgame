@@ -18,7 +18,10 @@ export function missionHUD(expeditions,pos,mode,{groundHeight=0,vehicleId=null}=
   return result;
  }
  const site=expeditions.sites.get(destination.id);
- if(!site||destination.distance>120)return result;
+ if(!site||destination.distance>120){
+  if(destination.seats>0)result.action='Extraction needs '+destination.seats+' passenger seat'+(destination.seats===1?'':'s');
+  return result;
+ }
  const rules=missionRules(site),state=site.state;
  if(site.kind==='settlement'&&state.alarmed&&!site.ready){
   result.action='Defend shelter · '+Math.ceil(rules.hold-state.defense)+' S';
