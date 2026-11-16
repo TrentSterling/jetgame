@@ -1,3 +1,4 @@
+import {CrowdVisibility,wantsCrowdVisibility} from './crowd-visibility.js';
 import {zombieLiteGeometry} from './zombie-lite.js';
 import {QUALITY} from './quality.js';
 import {regionsNear,encounterOffset} from './regions.js';
@@ -5,7 +6,7 @@ import {spawnCrowdOffset} from './spawn-layout.js';
 import {isRegionalGuard,localCrowdOffset,localCrowdClearance} from './local-crowd.js';
 import {CrowdPressure,CROWD_COUNTER_COUNT,CROWD_COUNTERS,CROWD_PRESSURE} from './crowd-pressure.js';
 import * as T from 'three/webgpu';
-import {Fn,instancedArray,uniform,uniformArray,wgslFn,instanceIndex,positionGeometry,normalLocal,attribute,vertexColor,transformNormalToView,mix,vec3,step,sin,texture} from 'three/tsl';
+import {Fn,instancedArray,uniform,uniformArray,wgslFn,instanceIndex,positionGeometry,normalLocal,attribute,vertexColor,transformNormalToView,mix,vec3,step,sin,texture,varying} from 'three/tsl';
 import {createKernels} from './kernels.js';
 import {addGore} from './gore.js';
 import {zombieGeometry} from './zombie-art.js';
@@ -60,7 +61,9 @@ export class Horde{
   this.blood=instancedArray(count*3,'vec4');
   Object.assign(this, createKernels(this));
   const geo=QUALITY.liteCrowd?zombieLiteGeometry():zombieGeometry();geo.instanceCount=count;this.trianglesPerEnemy=(geo.index?.count||geo.getAttribute('position').count)/3;
-  const p=this.pos.toAttribute(),s=this.state.toAttribute(),v=this.vel.toAttribute();
+  this.visibility=wantsCrowdVisibility(QUALITY,globalThis.location?.search||'')?new CrowdVisibility(renderer,this,geo):null;
+  const renderNodes=this.visibility?.renderNodes(this);
+  const p=renderNodes?renderNodes.p:this.pos.toAttribute(),s=renderNodes?varying(renderNodes.s):this.state.toAttribute(),v=renderNodes?renderNodes.v:this.vel.toAttribute();
   // Existing seed and vertex colors select worn fabric hues; no new instance buffers.
   const baseColor=attribute('color','vec3'),fabric=step(.012,baseColor.x.sub(baseColor.y));
   const clothTint=mix(mix(vec3(.63,.85,1.08),vec3(1.08,.64,.52),s.y.mul(3).clamp(0,1)),vec3(.75,.94,.66),s.y.sub(.5).mul(2).clamp(0,1));

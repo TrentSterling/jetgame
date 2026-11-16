@@ -545,13 +545,14 @@ function updateHUD(){
   saveStatus:ui.saveStatus,saveAvailable:!!saves?.enabled&&!saves.blocked,continuing:ui.continuing,muted:fx.mixer.muted,version:'0.15.0',
  });
 }
+function renderBattlefield(){horde?.visibility?.beforeRender(camera);renderer.render(scene,camera);}
 function renderFrame(dt=0){
  if(ui.screen==='game'&&ui.sceneFade>0)ui.sceneFade=Math.max(0,ui.sceneFade-Math.max(0,dt)/.18);
  updateHUD();
  // Menus render at display cadence without re-drawing a paused 12,000-actor
  // battlefield. Active play and programmatic gameplay fixtures render both.
  if(paused&&ui.screen!=='game')renderer.render(loadingScene,camera);
- else{lighting?.update(camera,dt);renderer.render(scene,camera);}
+ else{lighting?.update(camera,dt);renderBattlefield();}
  hud.render(renderer);
 }
 function focusMenu(direction=1){
@@ -594,7 +595,7 @@ function warmBattlefield(){
  renderer.getDrawingBufferSize(startupSize);
  if(!startupTarget)startupTarget=new T.RenderTarget(startupSize.x,startupSize.y,{samples:renderer.samples,depthBuffer:true});
  else startupTarget.setSize(startupSize.x,startupSize.y);
- withStartupRenderTarget(renderer,startupTarget,()=>renderer.render(scene,camera));
+ withStartupRenderTarget(renderer,startupTarget,()=>renderBattlefield());
 }
 const startup=startupUI(renderer,{phaseCount:14,onChange:state=>{
  ui.screen=state.failed?'error':state.ready?'start':'loading';
