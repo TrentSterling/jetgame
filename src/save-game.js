@@ -27,6 +27,7 @@ export function validateCheckpoint(s,count){
  if(!s.runtime||!modes.includes(s.runtime.mode)||!finite(s.runtime.time)||s.runtime.time<0||!position(s.runtime.deathPoint))bad('run state');
  if(!modes.includes(s.runtime.respawnMode)||Object.entries(s.runtime).some(([k,v])=>!['mode','respawnMode','deathPoint','infantryArsenal'].includes(k)&&!['boolean'].includes(typeof v)&&!finite(v)))bad('run values');
  if(!runtimeNumbers.every(k=>finite(s.runtime[k]))||!['dead','won'].every(k=>typeof s.runtime[k]==='boolean'))bad('missing run values');
+ if((s.runtime.carShotAt!==undefined||s.runtime.jetShotAt!==undefined)&&!['carShotAt','jetShotAt'].every(k=>finite(s.runtime[k])&&s.runtime[k]>=0))bad('vehicle gun cadence');
  if(s.runtime.hurtUntil!==undefined&&!finite(s.runtime.hurtUntil))bad('injury interruption');
  if(!s.upgrades||!modes.every(k=>Number.isInteger(s.upgrades.levels?.[k])&&s.upgrades.levels[k]>=0&&s.upgrades.levels[k]<=3)||!['earned','spent','rewards'].every(k=>finite(s.upgrades[k])&&s.upgrades[k]>=0))bad('upgrades');
  if(!validEquipment(s.upgrades.equipment))bad('missile equipment');
